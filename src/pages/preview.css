@@ -1,0 +1,38 @@
+@media print {
+  @page {
+    size: A4;
+    margin: 10mm;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  #invoice-print,
+  #invoice-print * {
+    visibility: visible;
+  }
+
+  #invoice-print {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+
+  #invoice-print {
+    width: 210mm;
+  }
+
+  button {
+    display: none !important;
+  }
+  table {
+    page-break-inside: auto;
+  }
+
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+}
