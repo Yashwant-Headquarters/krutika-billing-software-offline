@@ -8,6 +8,7 @@ import { APP_SHOP } from "../constant/shop";
 import { useNavigate } from "react-router-dom";
 import { PATH_DASHBOARD } from "../routes/paths";
 import DashboardIcon from "@mui/icons-material/Dashboard";
+import ViewListIcon from "@mui/icons-material/ViewList";
 
 const NavBar = () => {
   const navigate = useNavigate();
@@ -35,9 +36,21 @@ const NavBar = () => {
               color: APP_COLOR.primaryNormal,
             }}
             startIcon={<DashboardIcon />}
-            onClick={() => navigate(PATH_DASHBOARD.home)}
+            onClick={() => navigate(PATH_DASHBOARD.dashboard)}
           >
             Dashboard
+          </Button>
+
+          <Button
+            variant="contained"
+            sx={{
+              backgroundColor: APP_COLOR.white,
+              color: APP_COLOR.primaryNormal,
+            }}
+            startIcon={<ViewListIcon />}
+            onClick={() => navigate(PATH_DASHBOARD.invoiceList)}
+          >
+            Invoice List
           </Button>
 
           <Button

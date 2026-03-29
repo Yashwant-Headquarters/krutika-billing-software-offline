@@ -23,7 +23,7 @@ type Invoice = any;
 type Item = any;
 
 export default function InvoicePreview() {
-  const { invoiceId } = useParams();
+  const { invoiceId, isPrint } = useParams();
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [items, setItems] = useState<Item[]>([]);
 
@@ -38,19 +38,11 @@ export default function InvoicePreview() {
     );
     setInvoice(res.invoice);
     setItems(res.items);
+
+    if (isPrint === "true") {
+      setTimeout(handlePrint, 500);
+    }
   };
-
-  // const handlePrint = () => {
-  //   const printContents = document.getElementById("invoice-print")?.innerHTML;
-  //   const originalContents = document.body.innerHTML;
-
-  //   if (!printContents) return;
-
-  //   document.body.innerHTML = printContents;
-  //   window.print();
-  //   document.body.innerHTML = originalContents;
-  //   window.location.reload();
-  // };
 
   const handlePrint = () => {
     window.print();
@@ -68,6 +60,27 @@ export default function InvoicePreview() {
 
   return (
     <>
+      {" "}
+      {/* Print Button */}
+      {isPrint !== "true" && (
+        <Stack
+          sx={{
+            width: "100%",
+            alignItems: "center",
+            justifyContent: "center",
+            my: 3,
+          }}
+        >
+          <Button
+            variant="contained"
+            onClick={handlePrint}
+            sx={{ mt: 2 }}
+            startIcon={<PrintIcon />}
+          >
+            Print Invoice
+          </Button>
+        </Stack>
+      )}
       <div id="invoice-print">
         <Card
           sx={{
@@ -78,20 +91,31 @@ export default function InvoicePreview() {
             position: "relative",
           }}
         >
-          {/* <Typography
+          <Typography
             sx={{
               position: "absolute",
               top: 20,
               right: 20,
-              border: "2px solid green",
+              border: `2px solid ${
+                invoice.status === "PAID"
+                  ? "green"
+                  : invoice.status === "UNPAID"
+                    ? "red"
+                    : "gray"
+              }`,
               px: 2,
               py: 0.5,
               fontWeight: "bold",
-              color: "green",
+              color:
+                invoice.status === "PAID"
+                  ? "green"
+                  : invoice.status === "UNPAID"
+                    ? "red"
+                    : "gray",
             }}
           >
-            PAID
-          </Typography> */}
+            {invoice.status}
+          </Typography>
 
           <Box
             sx={{
@@ -250,6 +274,7 @@ export default function InvoicePreview() {
                 alignSelf: "end",
               }}
             >
+              {/* Sub Total */}
               <Stack
                 sx={{
                   border: "1px solid black",
@@ -270,6 +295,7 @@ export default function InvoicePreview() {
                 <Typography variant="body2">₹{subtotal}</Typography>
               </Stack>
 
+              {/* GST */}
               <Stack
                 sx={{
                   border: "1px solid black",
@@ -289,6 +315,8 @@ export default function InvoicePreview() {
                 </Typography>
                 <Typography variant="body2">₹{gstAmount}</Typography>
               </Stack>
+
+              {/* Discount */}
               <Stack
                 sx={{
                   border: "1px solid black",
@@ -308,6 +336,34 @@ export default function InvoicePreview() {
                 </Typography>
                 <Typography variant="body2">₹{invoice.discount}</Typography>
               </Stack>
+
+              {/* Pending */}
+              {invoice.status === "UNPAID" && (
+                <Stack
+                  sx={{
+                    border: "1px solid black",
+                    flexDirection: "row",
+                    gap: 1,
+                    p: 0.5,
+                  }}
+                >
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      width: "50%",
+                      borderRight: "1px solid red",
+                      color: "red",
+                    }}
+                  >
+                    Pending{" "}
+                  </Typography>
+                  <Typography variant="body2" color="red">
+                    ₹{invoice.pending_amount}
+                  </Typography>
+                </Stack>
+              )}
+
+              {/* Grand Total */}
               <Stack
                 sx={{
                   border: "1px solid black",
@@ -378,24 +434,6 @@ export default function InvoicePreview() {
           </Typography>
         </Card>
       </div>
-      {/* Print Button */}
-      <Stack
-        sx={{
-          width: "100%",
-          alignItems: "center",
-          justifyContent: "center",
-          my: 3,
-        }}
-      >
-        <Button
-          variant="contained"
-          onClick={handlePrint}
-          sx={{ mt: 2 }}
-          startIcon={<PrintIcon />}
-        >
-          Print Invoice
-        </Button>
-      </Stack>
     </>
   );
 }

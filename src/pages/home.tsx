@@ -11,9 +11,11 @@ type Invoice = {
   total: number;
   custom_gst: number;
   discount: number;
+  status: string;
+  pending_amount: number;
 };
 
-export default function Home() {
+export default function InvoiceList() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);

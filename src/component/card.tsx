@@ -12,6 +12,7 @@ import {
   DialogActions,
 } from "@mui/material";
 import { useState } from "react";
+import EditIcon from "@mui/icons-material/Edit";
 
 type Invoice = {
   id: number;
@@ -22,6 +23,8 @@ type Invoice = {
   total: number;
   custom_gst: number;
   discount: number;
+  status: string;
+  pending_amount: number;
 };
 
 type Props = {
@@ -38,74 +41,142 @@ export default function InvoiceCard({ invoice, onDelete }: Props) {
   return (
     <Card
       sx={{
-        p: 2,
-        width: 350,
-        borderRadius: 3,
-        boxShadow: 3,
-        transition: "0.2s",
-        "&:hover": { boxShadow: 6 },
+        p: 2.5,
+        width: 360,
+        borderRadius: 4,
+        boxShadow: "0 4px 20px rgba(0,0,0,0.05)",
+        transition: "0.3s",
+        border: "1px solid #eee",
+        "&:hover": {
+          transform: "translateY(-5px)",
+          boxShadow: "0 10px 30px rgba(0,0,0,0.1)",
+        },
       }}
     >
-      <Stack spacing={1.5}>
-        {/* Top Row */}
-        <Stack direction="row" justifyContent="space-between">
-          <Typography variant="h6">#{invoice.invoice_number}</Typography>
+      <Stack spacing={2}>
+        {/* Header */}
+        <Stack
+          direction="row"
+          justifyContent="space-between"
+          alignItems="center"
+        >
+          <Typography fontWeight="bold">#{invoice.invoice_number}</Typography>
 
-          <Typography color="primary" fontWeight="bold">
-            ₹{invoice.total}
+          <Typography fontWeight="bold" fontSize={18} color="primary">
+            ₹{(invoice.total ?? 0).toLocaleString("en-IN")}
           </Typography>
+        </Stack>
+
+        {/* Status Badge */}
+        <Stack
+          direction="row"
+          justifyContent="space-between"
+          alignItems="center"
+        >
+          <Typography
+            sx={{
+              px: 2,
+              py: 0.5,
+              borderRadius: 2,
+              fontSize: 12,
+              fontWeight: "bold",
+              backgroundColor:
+                invoice.status === "PAID"
+                  ? "#e8f5e9"
+                  : invoice.status === "UNPAID"
+                    ? "#ffebee"
+                    : "#eeeeee",
+              color:
+                invoice.status === "PAID"
+                  ? "green"
+                  : invoice.status === "UNPAID"
+                    ? "red"
+                    : "gray",
+            }}
+          >
+            {invoice.status}
+          </Typography>
+
+          {invoice.status === "UNPAID" && (
+            <Typography fontSize={13} color="error">
+              ₹{invoice.pending_amount} Pending
+            </Typography>
+          )}
         </Stack>
 
         <Divider />
 
-        {/* Shop */}
-        <Typography>
-          <b>Shop:</b> {invoice.shop_name}
-        </Typography>
+        {/* Info */}
+        <Stack spacing={0.5}>
+          <Typography fontSize={14}>
+            <b>Customer:</b> {invoice.customer_name}
+          </Typography>
 
-        {/* Customer */}
-        <Typography>
-          <b>Customer:</b> {invoice.customer_name}
-        </Typography>
+          <Typography fontSize={14}>
+            <b>Shop:</b> {invoice.shop_name}
+          </Typography>
 
-        {/* GST + Discount */}
+          <Typography fontSize={13} color="text.secondary">
+            📅 {invoice.date}
+          </Typography>
+        </Stack>
+
+        {/* Extra */}
         <Stack direction="row" justifyContent="space-between">
-          <Typography variant="body2" color="text.secondary">
+          <Typography fontSize={12} color="text.secondary">
             GST: {invoice.custom_gst}%
           </Typography>
 
-          <Typography variant="body2" color="text.secondary">
+          <Typography fontSize={12} color="text.secondary">
             Discount: ₹{invoice.discount}
           </Typography>
         </Stack>
 
-        {/* Date */}
-        <Typography variant="body2" color="text.secondary">
-          Date: {invoice.date}
-        </Typography>
-
         {/* Buttons */}
-        <Stack direction="row" spacing={2} mt={1}>
+        <Stack direction="row" spacing={1.5} mt={1}>
           <Button
             fullWidth
             variant="contained"
+            sx={{
+              borderRadius: 2,
+              textTransform: "none",
+              fontWeight: "bold",
+            }}
             startIcon={<VisibilityIcon />}
             onClick={() =>
               navigate(
-                PATH_DASHBOARD.preview.replace(
-                  ":invoiceId",
-                  String(invoice.id),
-                ),
+                PATH_DASHBOARD.preview
+                  .replace(":invoiceId", String(invoice.id))
+                  .replace(":isPrint", String(false)),
               )
             }
           >
-            Preview
+            View
+          </Button>
+
+          <Button
+            fullWidth
+            variant="outlined"
+            sx={{
+              borderRadius: 2,
+              textTransform: "none",
+            }}
+            startIcon={<EditIcon />}
+            onClick={() =>
+              navigate(PATH_DASHBOARD.newInvoice + `?edit=${invoice.id}`)
+            }
+          >
+            Edit
           </Button>
 
           <Button
             fullWidth
             variant="outlined"
             color="error"
+            sx={{
+              borderRadius: 2,
+              textTransform: "none",
+            }}
             startIcon={<DeleteIcon />}
             onClick={() => {
               setSelectedId(invoice.id);

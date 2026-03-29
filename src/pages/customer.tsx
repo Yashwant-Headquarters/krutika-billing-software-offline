@@ -25,6 +25,25 @@ export default function Customers() {
 
   const limit = 50;
 
+  const [openId, setOpenId] = useState<number | null>(null);
+  const [details, setDetails] = useState<any>({});
+
+  const handleOpen = async (id: number) => {
+    if (openId === id) {
+      setOpenId(null);
+      return;
+    }
+
+    const res = await window.electron.invoke("get-customer-details", id);
+
+    setDetails((prev: any) => ({
+      ...prev,
+      [id]: res,
+    }));
+
+    setOpenId(id);
+  };
+
   const loadCustomers = async () => {
     const result = await window.electron.invoke(
       "get-customers",
@@ -79,12 +98,40 @@ export default function Customers() {
       {/* 📦 Customer Cards */}
       <Stack spacing={2}>
         {customers.map((cust) => (
-          <Card key={cust.id} sx={{ p: 2 }}>
+          <Card
+            key={cust.id}
+            sx={{ p: 2, cursor: "pointer" }}
+            onClick={() => handleOpen(cust.id)}
+          >
+            {/* Basic Info */}
             <Typography fontWeight="bold">{cust.name}</Typography>
             <Typography>{cust.phone}</Typography>
             <Typography variant="body2" color="text.secondary">
               {cust.address}
             </Typography>
+
+            {/* Expand Section */}
+            {openId === cust.id && details[cust.id] && (
+              <Stack mt={2} spacing={1}>
+                <Divider />
+
+                <Typography>
+                  💰 Total Spend: ₹{details[cust.id].totalSpend}
+                </Typography>
+
+                <Typography color="error">
+                  ⚠ Pending: ₹{details[cust.id].pending}
+                </Typography>
+
+                <Typography fontWeight="bold">Last Transactions:</Typography>
+
+                {details[cust.id].lastTransactions.map((tx: any) => (
+                  <Typography key={tx.invoice_number}>
+                    {tx.invoice_number} | ₹{tx.total} | {tx.status}
+                  </Typography>
+                ))}
+              </Stack>
+            )}
           </Card>
         ))}
       </Stack>
