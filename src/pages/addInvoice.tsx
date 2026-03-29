@@ -240,12 +240,10 @@ export default function NewInvoice() {
       items,
     };
 
-    let invoiceId: any;
-
     if (editId) {
       await window.electron.invoke("update-invoice", Number(editId), payload);
     } else {
-      invoiceId = await window.electron.invoke("save-invoice", payload);
+      await window.electron.invoke("save-invoice", payload);
     }
 
     setOpenSnackbar(true);
