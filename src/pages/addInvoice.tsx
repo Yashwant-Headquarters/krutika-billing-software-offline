@@ -205,7 +205,6 @@ export default function NewInvoice() {
     };
 
     if (editId) {
-      console.log(payload);
       await window.electron.invoke("update-invoice", Number(editId), payload);
       navigate(PATH_DASHBOARD.invoiceList);
     } else {
