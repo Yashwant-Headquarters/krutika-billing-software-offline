@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   TextField,
   Button,
@@ -14,6 +14,9 @@ import { APP_SHOP } from "../constant/shop";
 import Autocomplete from "@mui/material/Autocomplete";
 import Snackbar from "@mui/material/Snackbar";
 import MuiAlert from "@mui/material/Alert";
+import { MenuItem } from "@mui/material";
+import { PATH_DASHBOARD } from "../routes/paths";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 type Item = {
   item_name: string;
@@ -44,6 +47,7 @@ const generateInvoiceNumber = () => {
 };
 
 export default function NewInvoice() {
+  const navigate = useNavigate();
   const [invoiceNumber, setInvoiceNumber] = useState(generateInvoiceNumber());
   const [customerOptions, setCustomerOptions] = useState<any[]>([]);
   const [itemOptions, setItemOptions] = useState<any[]>([]);
@@ -55,6 +59,8 @@ export default function NewInvoice() {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
+  const [status, setStatus] = useState("PAID");
+  const [paidAmount, setPaidAmount] = useState(0);
 
   const [date, setDate] = useState(getIndiaDate());
 
@@ -64,6 +70,42 @@ export default function NewInvoice() {
   const [items, setItems] = useState<Item[]>([
     { item_name: "", quantity: 1, price: 0 },
   ]);
+
+  const [params] = useSearchParams();
+  const editId = params.get("edit");
+
+  useEffect(() => {
+    if (editId) {
+      loadInvoice(editId);
+    }
+  }, [editId]);
+
+  //
+  // Load Function
+  //
+
+  const loadInvoice = async (id: string) => {
+    const res = await window.electron.invoke("get-invoice-details", Number(id));
+
+    const { invoice, items } = res;
+
+    setInvoiceNumber(invoice.invoice_number);
+    setCustomerName(invoice.name);
+    setCustomerPhone(invoice.phone);
+    setCustomerAddress(invoice.address);
+    setDate(invoice.date);
+    setCustomGst(invoice.custom_gst);
+    setDiscount(invoice.discount);
+    setStatus(invoice.status);
+
+    setItems(
+      items.map((i: any) => ({
+        item_name: i.item_name,
+        quantity: i.quantity,
+        price: i.price,
+      })),
+    );
+  };
 
   /* =========================
      CALCULATIONS
@@ -121,6 +163,23 @@ export default function NewInvoice() {
   };
 
   /* =========================
+     CLEAR FUNCTION
+  ========================= */
+
+  const handleClear = () => (
+    setInvoiceNumber(generateInvoiceNumber()),
+    setCustomerName(""),
+    setCustomerPhone(""),
+    setCustomerAddress(""),
+    setItems([{ item_name: "", quantity: 1, price: 0 }]),
+    setCustomGst(0),
+    setDiscount(0),
+    setCustomerOptions([]),
+    setItemOptions([]),
+    setPaidAmount(0)
+  );
+
+  /* =========================
      SAVE FUNCTION
   ========================= */
 
@@ -140,23 +199,59 @@ export default function NewInvoice() {
       date,
       custom_gst: customGst,
       discount,
+      pending_amount: status == "UNPAID" ? finalTotal - paidAmount : 0,
+      status,
       items,
     };
 
-    await window.electron.invoke("save-invoice", payload);
+    if (editId) {
+      await window.electron.invoke("update-invoice", Number(editId), payload);
+      navigate(PATH_DASHBOARD.invoiceList);
+    } else {
+      await window.electron.invoke("save-invoice", payload);
+    }
 
     setOpenSnackbar(true);
+    handleClear();
+  };
 
-    // ✅ RESET FORM
-    setInvoiceNumber(generateInvoiceNumber());
-    setCustomerName("");
-    setCustomerPhone("");
-    setCustomerAddress("");
-    setItems([{ item_name: "", quantity: 1, price: 0 }]);
-    setCustomGst(0);
-    setDiscount(0);
-    setCustomerOptions([]);
-    setItemOptions([]);
+  /* =========================
+     SAVE AND PRINT FUNCTION
+  ========================= */
+
+  const handleSaveAndPrint = async () => {
+    if (!isFormValid) return;
+
+    const payload = {
+      invoice_number: invoiceNumber,
+      shop_name: APP_SHOP.name,
+      shop_phone: APP_SHOP.phoneNumber,
+      shop_address: APP_SHOP.address,
+      customer: {
+        name: customerName,
+        phone: customerPhone,
+        address: customerAddress,
+      },
+      date,
+      custom_gst: customGst,
+      discount,
+      pending_amount: finalTotal - paidAmount,
+      status,
+      items,
+    };
+
+    const id = editId
+      ? await window.electron.invoke("update-invoice", Number(editId), payload)
+      : await window.electron.invoke("save-invoice", payload);
+
+    setOpenSnackbar(true);
+    handleClear();
+
+    navigate(
+      PATH_DASHBOARD.preview
+        .replace(":invoiceId", String(editId || id))
+        .replace(":isPrint", String(true)),
+    );
   };
 
   const handleItemSearch = async (value: string) => {
@@ -182,7 +277,7 @@ export default function NewInvoice() {
   return (
     <Stack spacing={4} p={4} maxWidth={800} margin="auto">
       <Typography variant="h4" fontWeight="bold">
-        Create New Invoice
+        {editId ? "Update Invoice" : "Create New Invoice"}
       </Typography>
 
       {/* Shop Info */}
@@ -254,6 +349,37 @@ export default function NewInvoice() {
             value={date}
             onChange={(e) => setDate(e.target.value)}
           />
+
+          <TextField
+            select
+            label="Status"
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+            fullWidth
+            sx={{
+              "& .MuiSelect-select": {
+                color:
+                  status === "PAID"
+                    ? "green"
+                    : status === "UNPAID"
+                      ? "red"
+                      : "gray",
+                fontWeight: "bold",
+              },
+            }}
+          >
+            <MenuItem value="PAID" sx={{ color: "green" }}>
+              PAID
+            </MenuItem>
+
+            <MenuItem value="UNPAID" sx={{ color: "red" }}>
+              UNPAID
+            </MenuItem>
+
+            <MenuItem value="CANCEL" sx={{ color: "gray" }}>
+              CANCEL
+            </MenuItem>
+          </TextField>
         </Stack>
       </Card>
 
@@ -392,6 +518,35 @@ export default function NewInvoice() {
               },
             }}
           />
+          {status === "UNPAID" && (
+            <TextField
+              type="number"
+              label="Paid Amount - How much customer paid?"
+              value={paidAmount}
+              onChange={(e) => {
+                const value = Number(e.target.value);
+                if (value > finalTotal) {
+                  setPaidAmount(finalTotal);
+                } else {
+                  setPaidAmount(value);
+                }
+              }}
+              error={paidAmount > finalTotal}
+              helperText={
+                paidAmount > finalTotal ? "Paid amount cannot exceed total" : ""
+              }
+              fullWidth
+              sx={{
+                "& input::-webkit-outer-spin-button, & input::-webkit-inner-spin-button":
+                  {
+                    display: "none",
+                  },
+                "& input[type=number]": {
+                  MozAppearance: "textfield",
+                },
+              }}
+            />
+          )}
 
           <Divider />
 
@@ -400,17 +555,39 @@ export default function NewInvoice() {
           <Typography fontWeight="bold" fontSize={18}>
             Total: ₹{finalTotal}
           </Typography>
+          {status === "UNPAID" && (
+            <Typography fontWeight="bold" fontSize={18}>
+              Pending: ₹{finalTotal - paidAmount}
+            </Typography>
+          )}
         </Stack>
       </Card>
 
-      <Button
-        variant="contained"
-        size="large"
-        disabled={!isFormValid}
-        onClick={handleSave}
+      <Stack
+        sx={{
+          flexDirection: "row",
+          gap: 2,
+        }}
       >
-        Save Invoice
-      </Button>
+        <Button
+          variant="outlined"
+          size="large"
+          disabled={!isFormValid}
+          onClick={handleSave}
+        >
+          {editId ? "Update Invoice" : "Save Invoice"}
+        </Button>
+
+        <Button
+          variant="contained"
+          size="large"
+          disabled={!isFormValid}
+          onClick={handleSaveAndPrint}
+        >
+          {editId ? "Update & Print" : "Save & Print"}
+        </Button>
+      </Stack>
+
       <Snackbar
         open={openSnackbar}
         autoHideDuration={2000}

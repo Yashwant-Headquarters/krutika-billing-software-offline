@@ -59,6 +59,7 @@ function initializeDatabase() {
     `
     CREATE TABLE IF NOT EXISTS invoices (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      status TEXT CHECK(status IN ('PAID','UNPAID','CANCEL')) DEFAULT 'PAID',
       invoice_number TEXT,
       shop_name TEXT,
       shop_phone TEXT,
@@ -68,6 +69,7 @@ function initializeDatabase() {
       custom_gst REAL,
       discount REAL,
       total REAL,
+      pending_amount REAL DEFAULT 0,
       FOREIGN KEY(customer_id) REFERENCES customers(id) ON DELETE CASCADE
     )
   `,
@@ -100,6 +102,19 @@ function initializeDatabase() {
   ).run();
 }
 
+function migrateDatabase() {
+  try {
+    db.prepare(
+      `ALTER TABLE invoices ADD COLUMN status TEXT CHECK(status IN ('PAID','UNPAID','CANCEL')) DEFAULT 'PAID'`,
+    ).run();
+  } catch {}
+
+  try {
+    db.prepare(
+      `ALTER TABLE invoices ADD COLUMN pending_amount REAL DEFAULT 0`,
+    ).run();
+  } catch {}
+}
 /* =========================
    GET CUSTOMERS (Pagination + Search)
 ========================= */
@@ -266,12 +281,14 @@ ipcMain.handle("save-invoice", (_, data) => {
       .prepare(
         `
         INSERT INTO invoices
-        (invoice_number, shop_name, shop_phone, shop_address,
+        (status, pending_amount, invoice_number, shop_name, shop_phone, shop_address,
          customer_id, date, custom_gst, discount, total)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       )
       .run(
+        data.status || "PAID",
+        data.pending_amount || 0,
         data.invoice_number,
         data.shop_name,
         data.shop_phone,
@@ -315,7 +332,7 @@ ipcMain.handle("save-invoice", (_, data) => {
       masterStmt.run(item.item_name, item.price);
     });
 
-    return true;
+    return invoiceId;
   });
 
   return transaction();
@@ -460,12 +477,302 @@ ipcMain.handle("delete-invoice", (_, invoiceId: number) => {
   return true;
 });
 
+//
+// GET DASHBOARD
+//
+
+ipcMain.handle("get-dashboard", () => {
+  const totalRevenue =
+    (
+      db
+        .prepare(
+          `SELECT SUM(total) as total FROM invoices WHERE status != 'CANCEL'`,
+        )
+        .get() as {
+        total: number | null;
+      }
+    ).total || 0;
+
+  const totalCustomers = (
+    db.prepare(`SELECT COUNT(*) as count FROM customers`).get() as {
+      count: number;
+    }
+  ).count;
+
+  const totalInvoices = (
+    db
+      .prepare(
+        `SELECT COUNT(*) as count FROM invoices WHERE status != 'CANCEL'`,
+      )
+      .get() as {
+      count: number;
+    }
+  ).count;
+
+  const pending =
+    (
+      db
+        .prepare(
+          `SELECT SUM(pending_amount) as pending FROM invoices WHERE status != 'CANCEL'`,
+        )
+        .get() as { pending: number | null }
+    ).pending || 0;
+
+  return { totalRevenue, totalCustomers, totalInvoices, pending };
+});
+
+//
+// Get char data
+//
+
+ipcMain.handle("get-chart-data", (_, filter) => {
+  if (["7", "15", "30", "90"].includes(filter)) {
+    return db
+      .prepare(
+        `
+      SELECT date as label, SUM(total) as total
+      FROM invoices
+      WHERE date >= date('now', '-${filter} days') AND status != 'CANCEL'
+      GROUP BY date
+      ORDER BY date
+    `,
+      )
+      .all();
+  }
+
+  if (filter === "month") {
+    return db
+      .prepare(
+        `
+      SELECT SUBSTR(date,1,7) as label, SUM(total) as total
+      FROM invoices
+      WHERE status != 'CANCEL'
+      GROUP BY label
+      ORDER BY label
+    `,
+      )
+      .all();
+  }
+
+  if (filter === "year") {
+    return db
+      .prepare(
+        `
+      SELECT SUBSTR(date,1,4) as label, SUM(total) as total
+      FROM invoices
+      WHERE status != 'CANCEL'
+      GROUP BY label
+      ORDER BY label
+    `,
+      )
+      .all();
+  }
+});
+
+//
+// pending-customers
+//
+
+ipcMain.handle("pending-customers", () => {
+  return db
+    .prepare(
+      `
+    SELECT customers.name, SUM(invoices.pending_amount) as pending
+    FROM invoices
+    JOIN customers ON invoices.customer_id = customers.id
+    WHERE status != 'CANCEL'
+    GROUP BY customers.id
+    HAVING pending > 0
+    ORDER BY pending DESC
+    LIMIT 5
+  `,
+    )
+    .all();
+});
+
+//
+// get-customer-details
+//
+
+ipcMain.handle("get-customer-details", (_, customerId) => {
+  const totalSpend =
+    (
+      db
+        .prepare(
+          `SELECT SUM(total) as total FROM invoices WHERE customer_id = ?`,
+        )
+        .get(customerId) as { total: number | null }
+    ).total || 0;
+
+  const pending =
+    (
+      db
+        .prepare(
+          `SELECT SUM(pending_amount) as pending FROM invoices WHERE customer_id = ?`,
+        )
+        .get(customerId) as { pending: number | null }
+    ).pending || 0;
+
+  const lastTransactions = db
+    .prepare(
+      `
+      SELECT invoice_number, date, total, status
+      FROM invoices
+      WHERE customer_id = ?
+      ORDER BY id DESC
+      LIMIT 3
+    `,
+    )
+    .all(customerId);
+
+  return { totalSpend, pending, lastTransactions };
+});
+
+//
+// dashboard-stats
+//
+
+ipcMain.handle("dashboard-stats", () => {
+  const currentMonth =
+    (
+      db
+        .prepare(
+          `
+    SELECT SUM(total) as total
+    FROM invoices
+    WHERE date(date) >= date('now','start of month')
+      AND date(date) <= date('now') AND status != 'CANCEL'
+  `,
+        )
+        .get() as { total: number | null }
+    ).total || 0;
+
+  const lastMonth =
+    (
+      db
+        .prepare(
+          `
+    SELECT SUM(total) as total
+    FROM invoices
+    WHERE date(date) >= date('now','start of month','-1 month')
+      AND date(date) < date('now','start of month') AND status != 'CANCEL'
+  `,
+        )
+        .get() as { total: number | null }
+    ).total || 0;
+
+  const today =
+    (
+      db
+        .prepare(
+          `
+      SELECT SUM(total) as total
+      FROM invoices
+      WHERE date(date) = date('now') AND status != 'CANCEL'
+    `,
+        )
+        .get() as { total: number | null }
+    ).total || 0;
+
+  const growth =
+    lastMonth === 0
+      ? currentMonth > 0
+        ? 100
+        : 0
+      : ((currentMonth - lastMonth) / lastMonth) * 100;
+
+  return {
+    currentMonth,
+    lastMonth,
+    today,
+    growth: Number(growth.toFixed(1)),
+  };
+});
+
+//
+// top-items
+//
+
+ipcMain.handle("top-items", () => {
+  return db
+    .prepare(
+      `
+    SELECT item_name as name, SUM(quantity) as value
+    FROM invoice_items
+    GROUP BY item_name
+    ORDER BY value DESC
+    LIMIT 5
+  `,
+    )
+    .all();
+});
+
+//
+// Update
+//
+
+ipcMain.handle("update-invoice", (_, id, data) => {
+  const transaction = db.transaction(() => {
+    let subtotal = 0;
+
+    data.items.forEach((item: any) => {
+      subtotal += item.quantity * item.price;
+    });
+
+    const gstAmount = (subtotal * data.custom_gst) / 100;
+    const finalTotal = subtotal + gstAmount - data.discount;
+
+    const pendingAmount =
+      data.status === "UNPAID"
+        ? Math.max(0, finalTotal - data.paidAmount || 0)
+        : 0;
+    // update invoice
+    db.prepare(
+      `
+      UPDATE invoices
+      SET status = ?, custom_gst = ?, discount = ?, total = ?, pending_amount = ?, date = ?
+      WHERE id = ?
+    `,
+    ).run(
+      data.status,
+      data.custom_gst,
+      data.discount,
+      finalTotal,
+      pendingAmount,
+      data.date,
+      id,
+    );
+
+    // delete old items
+    db.prepare(`DELETE FROM invoice_items WHERE invoice_id = ?`).run(id);
+
+    // insert new items
+    const stmt = db.prepare(`
+      INSERT INTO invoice_items (invoice_id, item_name, quantity, price, total)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+
+    data.items.forEach((item: any) => {
+      stmt.run(
+        id,
+        item.item_name,
+        item.quantity,
+        item.price,
+        item.quantity * item.price,
+      );
+    });
+  });
+
+  return transaction();
+});
+
 /* =========================
    APP START
 ========================= */
 
 app.whenReady().then(() => {
   initializeDatabase();
+  migrateDatabase();
   createWindow();
 });
 

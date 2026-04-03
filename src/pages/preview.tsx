@@ -23,7 +23,7 @@ type Invoice = any;
 type Item = any;
 
 export default function InvoicePreview() {
-  const { invoiceId } = useParams();
+  const { invoiceId, isPrint } = useParams();
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [items, setItems] = useState<Item[]>([]);
 
@@ -38,19 +38,11 @@ export default function InvoicePreview() {
     );
     setInvoice(res.invoice);
     setItems(res.items);
+
+    if (isPrint === "true") {
+      setTimeout(handlePrint, 500);
+    }
   };
-
-  // const handlePrint = () => {
-  //   const printContents = document.getElementById("invoice-print")?.innerHTML;
-  //   const originalContents = document.body.innerHTML;
-
-  //   if (!printContents) return;
-
-  //   document.body.innerHTML = printContents;
-  //   window.print();
-  //   document.body.innerHTML = originalContents;
-  //   window.location.reload();
-  // };
 
   const handlePrint = () => {
     window.print();
@@ -68,6 +60,27 @@ export default function InvoicePreview() {
 
   return (
     <>
+      {" "}
+      {/* Print Button */}
+      {isPrint !== "true" && (
+        <Stack
+          sx={{
+            width: "100%",
+            alignItems: "center",
+            justifyContent: "center",
+            my: 3,
+          }}
+        >
+          <Button
+            variant="contained"
+            onClick={handlePrint}
+            sx={{ mt: 2 }}
+            startIcon={<PrintIcon />}
+          >
+            Print Invoice
+          </Button>
+        </Stack>
+      )}
       <div id="invoice-print">
         <Card
           sx={{
@@ -78,20 +91,31 @@ export default function InvoicePreview() {
             position: "relative",
           }}
         >
-          {/* <Typography
+          <Typography
             sx={{
               position: "absolute",
               top: 20,
               right: 20,
-              border: "2px solid green",
+              border: `2px solid ${
+                invoice.status === "PAID"
+                  ? "green"
+                  : invoice.status === "UNPAID"
+                    ? "red"
+                    : "gray"
+              }`,
               px: 2,
               py: 0.5,
               fontWeight: "bold",
-              color: "green",
+              color:
+                invoice.status === "PAID"
+                  ? "green"
+                  : invoice.status === "UNPAID"
+                    ? "red"
+                    : "gray",
             }}
           >
-            PAID
-          </Typography> */}
+            {invoice.status}
+          </Typography>
 
           <Box
             sx={{
@@ -111,7 +135,7 @@ export default function InvoicePreview() {
           </Box>
 
           <Typography variant="h6" fontWeight="bold" textAlign={"center"}>
-            <u>Bill Of Shop</u>
+            <u>Invoice</u>
           </Typography>
           <Stack
             sx={{
@@ -125,6 +149,9 @@ export default function InvoicePreview() {
             </Typography>
             <Typography variant="body2">
               <i>{APP_SHOP.address}</i>
+            </Typography>
+            <Typography variant="body2">
+              <i>{APP_SHOP.city}</i>
             </Typography>
             <Stack sx={{ flexDirection: "row", gap: 1 }}>
               <Typography fontSize={14}>
@@ -170,7 +197,7 @@ export default function InvoicePreview() {
                 }}
               >
                 <Typography textAlign={"center"} sx={{ mb: 1 }}>
-                  <b>Bill From:</b>
+                  <b>Invoice From:</b>
                 </Typography>
                 {/* Shop Info */}
                 <Typography variant="body2">
@@ -193,7 +220,7 @@ export default function InvoicePreview() {
                 }}
               >
                 <Typography textAlign={"center"} sx={{ mb: 1 }}>
-                  <b>Bill To:</b>
+                  <b>Invoice To:</b>
                 </Typography>
                 {/* Customer Info */}
                 <Typography variant="body2">
@@ -243,94 +270,148 @@ export default function InvoicePreview() {
 
             {/* <Stack sx={{ borderTop: "1px solid black" }}></Stack> */}
 
-            {/* Summary */}
-            <Stack
-              sx={{
-                width: "50%",
-                alignSelf: "end",
-              }}
-            >
+            <Stack flexDirection={"row"}>
               <Stack
                 sx={{
-                  border: "1px solid black",
-                  flexDirection: "row",
-                  gap: 1,
-                  p: 0.5,
+                  width: "50%",
+                  p: 1,
                 }}
               >
-                <Typography
-                  variant="body2"
+                <Typography fontSize={16} fontWeight={"bold"}>
+                  Bank Details
+                </Typography>
+                <Typography variant="body2">
+                  <b>Name of A/C :</b> {APP_SHOP.bank.accountName}
+                </Typography>
+                <Typography variant="body2">
+                  <b>Acount No. :</b> {APP_SHOP.bank.accountNumber}
+                </Typography>
+                <Typography variant="body2">
+                  <b>IFSC Code :</b> {APP_SHOP.bank.ifscCode}
+                </Typography>
+              </Stack>
+              {/* Summary */}
+              <Stack
+                sx={{
+                  width: "50%",
+                  alignSelf: "end",
+                }}
+              >
+                {/* Sub Total */}
+                <Stack
                   sx={{
-                    width: "50%",
-                    borderRight: "1px solid black",
+                    border: "1px solid black",
+                    flexDirection: "row",
+                    gap: 1,
+                    p: 0.5,
                   }}
                 >
-                  Subtotal{" "}
-                </Typography>
-                <Typography variant="body2">₹{subtotal}</Typography>
-              </Stack>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      width: "50%",
+                      borderRight: "1px solid black",
+                    }}
+                  >
+                    Subtotal{" "}
+                  </Typography>
+                  <Typography variant="body2">₹{subtotal}</Typography>
+                </Stack>
 
-              <Stack
-                sx={{
-                  border: "1px solid black",
-                  flexDirection: "row",
-                  gap: 1,
-                  p: 0.5,
-                }}
-              >
-                <Typography
-                  variant="body2"
+                {/* GST */}
+                <Stack
                   sx={{
-                    width: "50%",
-                    borderRight: "1px solid black",
+                    border: "1px solid black",
+                    flexDirection: "row",
+                    gap: 1,
+                    p: 0.5,
                   }}
                 >
-                  GST{" "}
-                </Typography>
-                <Typography variant="body2">₹{gstAmount}</Typography>
-              </Stack>
-              <Stack
-                sx={{
-                  border: "1px solid black",
-                  flexDirection: "row",
-                  gap: 1,
-                  p: 0.5,
-                }}
-              >
-                <Typography
-                  variant="body2"
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      width: "50%",
+                      borderRight: "1px solid black",
+                    }}
+                  >
+                    GST{" "}
+                  </Typography>
+                  <Typography variant="body2">₹{gstAmount}</Typography>
+                </Stack>
+
+                {/* Discount */}
+                <Stack
                   sx={{
-                    width: "50%",
-                    borderRight: "1px solid black",
+                    border: "1px solid black",
+                    flexDirection: "row",
+                    gap: 1,
+                    p: 0.5,
                   }}
                 >
-                  Discount{" "}
-                </Typography>
-                <Typography variant="body2">₹{invoice.discount}</Typography>
-              </Stack>
-              <Stack
-                sx={{
-                  border: "1px solid black",
-                  flexDirection: "row",
-                  gap: 1,
-                  p: 0.5,
-                }}
-              >
-                <Typography
-                  variant="body2"
-                  fontWeight="bold"
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      width: "50%",
+                      borderRight: "1px solid black",
+                    }}
+                  >
+                    Discount{" "}
+                  </Typography>
+                  <Typography variant="body2">₹{invoice.discount}</Typography>
+                </Stack>
+
+                {/* Pending */}
+                {invoice.status === "UNPAID" && (
+                  <Stack
+                    sx={{
+                      border: "1px solid black",
+                      flexDirection: "row",
+                      gap: 1,
+                      p: 0.5,
+                    }}
+                  >
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        width: "50%",
+                        borderRight: "1px solid red",
+                        color: "red",
+                      }}
+                    >
+                      Pending{" "}
+                    </Typography>
+                    <Typography variant="body2" color="red">
+                      ₹{invoice.pending_amount}
+                    </Typography>
+                  </Stack>
+                )}
+
+                {/* Grand Total */}
+                <Stack
                   sx={{
-                    width: "50%",
-                    borderRight: "1px solid black",
+                    border: "1px solid black",
+                    flexDirection: "row",
+                    gap: 1,
+                    p: 0.5,
                   }}
                 >
-                  Grand Total{" "}
-                </Typography>
-                <Typography fontWeight="bold" variant="body2">
-                  ₹{finalTotal}
-                </Typography>
+                  <Typography
+                    variant="body2"
+                    fontWeight="bold"
+                    sx={{
+                      width: "50%",
+                      borderRight: "1px solid black",
+                    }}
+                  >
+                    Grand Total{" "}
+                  </Typography>
+                  <Typography fontWeight="bold" variant="body2">
+                    ₹{finalTotal}
+                  </Typography>
+                </Stack>
               </Stack>
             </Stack>
+
             <Stack
               sx={{
                 p: 1,
@@ -378,24 +459,6 @@ export default function InvoicePreview() {
           </Typography>
         </Card>
       </div>
-      {/* Print Button */}
-      <Stack
-        sx={{
-          width: "100%",
-          alignItems: "center",
-          justifyContent: "center",
-          my: 3,
-        }}
-      >
-        <Button
-          variant="contained"
-          onClick={handlePrint}
-          sx={{ mt: 2 }}
-          startIcon={<PrintIcon />}
-        >
-          Print Invoice
-        </Button>
-      </Stack>
     </>
   );
 }

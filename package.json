@@ -1,7 +1,7 @@
 {
   "name": "emitra-billing",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.5.0",
   "type": "module",
   "main": "electron/main.ts",
   "scripts": {
@@ -19,10 +19,11 @@
   ],
   "build": {
     "appId": "com.yashwant.emitra",
-    "productName": "eMitra Billing",
+    "productName": "Stationary Invoice",
     "directories": {
       "output": "dist-electron"
     },
+    "icon": "public/favicon/favicon.ico",
     "files": [
       "dist/**/*",
       "electron/**/*",
@@ -58,6 +59,7 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.13.0",
+    "recharts": "^3.8.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
