@@ -1,7 +1,7 @@
 export const APP_SHOP = {
   name: "Kritika Computer V Stationary",
   phoneNumber: "+91 9413324115",
-  address: "Grag Kirana Store ke Samne, Virdh Aashram Road, Sri Ganganagar",
+  address: "Shop no : 39-40, Opposite Garg Kiryana Store, Vridh Ashram Road",
   city: "Sri Ganganagar",
   state: "Rajashtan",
   email: "kritika.kc57@gmail.com",
@@ -27,4 +27,10 @@ export const APP_SHOP = {
   ],
 
   googleMapLink: "https://maps.app.goo.gl/6qXkwHQXZgnUpRDp9",
+
+  bank: {
+    accountName: "Kritika Computer V Stationary",
+    accountNumber: 1628102100001929,
+    ifscCode: "PUNB0162810",
+  },
 };

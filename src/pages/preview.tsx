@@ -135,7 +135,7 @@ export default function InvoicePreview() {
           </Box>
 
           <Typography variant="h6" fontWeight="bold" textAlign={"center"}>
-            <u>Bill Of Shop</u>
+            <u>Invoice</u>
           </Typography>
           <Stack
             sx={{
@@ -149,6 +149,9 @@ export default function InvoicePreview() {
             </Typography>
             <Typography variant="body2">
               <i>{APP_SHOP.address}</i>
+            </Typography>
+            <Typography variant="body2">
+              <i>{APP_SHOP.city}</i>
             </Typography>
             <Stack sx={{ flexDirection: "row", gap: 1 }}>
               <Typography fontSize={14}>
@@ -194,7 +197,7 @@ export default function InvoicePreview() {
                 }}
               >
                 <Typography textAlign={"center"} sx={{ mb: 1 }}>
-                  <b>Bill From:</b>
+                  <b>Invoice From:</b>
                 </Typography>
                 {/* Shop Info */}
                 <Typography variant="body2">
@@ -217,7 +220,7 @@ export default function InvoicePreview() {
                 }}
               >
                 <Typography textAlign={"center"} sx={{ mb: 1 }}>
-                  <b>Bill To:</b>
+                  <b>Invoice To:</b>
                 </Typography>
                 {/* Customer Info */}
                 <Typography variant="body2">
@@ -267,78 +270,34 @@ export default function InvoicePreview() {
 
             {/* <Stack sx={{ borderTop: "1px solid black" }}></Stack> */}
 
-            {/* Summary */}
-            <Stack
-              sx={{
-                width: "50%",
-                alignSelf: "end",
-              }}
-            >
-              {/* Sub Total */}
+            <Stack flexDirection={"row"}>
               <Stack
                 sx={{
-                  border: "1px solid black",
-                  flexDirection: "row",
-                  gap: 1,
-                  p: 0.5,
+                  width: "50%",
+                  p: 1,
                 }}
               >
-                <Typography
-                  variant="body2"
-                  sx={{
-                    width: "50%",
-                    borderRight: "1px solid black",
-                  }}
-                >
-                  Subtotal{" "}
+                <Typography fontSize={16} fontWeight={"bold"}>
+                  Bank Details
                 </Typography>
-                <Typography variant="body2">₹{subtotal}</Typography>
+                <Typography variant="body2">
+                  <b>Name of A/C :</b> {APP_SHOP.bank.accountName}
+                </Typography>
+                <Typography variant="body2">
+                  <b>Acount No. :</b> {APP_SHOP.bank.accountNumber}
+                </Typography>
+                <Typography variant="body2">
+                  <b>IFSC Code :</b> {APP_SHOP.bank.ifscCode}
+                </Typography>
               </Stack>
-
-              {/* GST */}
+              {/* Summary */}
               <Stack
                 sx={{
-                  border: "1px solid black",
-                  flexDirection: "row",
-                  gap: 1,
-                  p: 0.5,
+                  width: "50%",
+                  alignSelf: "end",
                 }}
               >
-                <Typography
-                  variant="body2"
-                  sx={{
-                    width: "50%",
-                    borderRight: "1px solid black",
-                  }}
-                >
-                  GST{" "}
-                </Typography>
-                <Typography variant="body2">₹{gstAmount}</Typography>
-              </Stack>
-
-              {/* Discount */}
-              <Stack
-                sx={{
-                  border: "1px solid black",
-                  flexDirection: "row",
-                  gap: 1,
-                  p: 0.5,
-                }}
-              >
-                <Typography
-                  variant="body2"
-                  sx={{
-                    width: "50%",
-                    borderRight: "1px solid black",
-                  }}
-                >
-                  Discount{" "}
-                </Typography>
-                <Typography variant="body2">₹{invoice.discount}</Typography>
-              </Stack>
-
-              {/* Pending */}
-              {invoice.status === "UNPAID" && (
+                {/* Sub Total */}
                 <Stack
                   sx={{
                     border: "1px solid black",
@@ -351,42 +310,108 @@ export default function InvoicePreview() {
                     variant="body2"
                     sx={{
                       width: "50%",
-                      borderRight: "1px solid red",
-                      color: "red",
+                      borderRight: "1px solid black",
                     }}
                   >
-                    Pending{" "}
+                    Subtotal{" "}
                   </Typography>
-                  <Typography variant="body2" color="red">
-                    ₹{invoice.pending_amount}
-                  </Typography>
+                  <Typography variant="body2">₹{subtotal}</Typography>
                 </Stack>
-              )}
 
-              {/* Grand Total */}
-              <Stack
-                sx={{
-                  border: "1px solid black",
-                  flexDirection: "row",
-                  gap: 1,
-                  p: 0.5,
-                }}
-              >
-                <Typography
-                  variant="body2"
-                  fontWeight="bold"
+                {/* GST */}
+                <Stack
                   sx={{
-                    width: "50%",
-                    borderRight: "1px solid black",
+                    border: "1px solid black",
+                    flexDirection: "row",
+                    gap: 1,
+                    p: 0.5,
                   }}
                 >
-                  Grand Total{" "}
-                </Typography>
-                <Typography fontWeight="bold" variant="body2">
-                  ₹{finalTotal}
-                </Typography>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      width: "50%",
+                      borderRight: "1px solid black",
+                    }}
+                  >
+                    GST{" "}
+                  </Typography>
+                  <Typography variant="body2">₹{gstAmount}</Typography>
+                </Stack>
+
+                {/* Discount */}
+                <Stack
+                  sx={{
+                    border: "1px solid black",
+                    flexDirection: "row",
+                    gap: 1,
+                    p: 0.5,
+                  }}
+                >
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      width: "50%",
+                      borderRight: "1px solid black",
+                    }}
+                  >
+                    Discount{" "}
+                  </Typography>
+                  <Typography variant="body2">₹{invoice.discount}</Typography>
+                </Stack>
+
+                {/* Pending */}
+                {invoice.status === "UNPAID" && (
+                  <Stack
+                    sx={{
+                      border: "1px solid black",
+                      flexDirection: "row",
+                      gap: 1,
+                      p: 0.5,
+                    }}
+                  >
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        width: "50%",
+                        borderRight: "1px solid red",
+                        color: "red",
+                      }}
+                    >
+                      Pending{" "}
+                    </Typography>
+                    <Typography variant="body2" color="red">
+                      ₹{invoice.pending_amount}
+                    </Typography>
+                  </Stack>
+                )}
+
+                {/* Grand Total */}
+                <Stack
+                  sx={{
+                    border: "1px solid black",
+                    flexDirection: "row",
+                    gap: 1,
+                    p: 0.5,
+                  }}
+                >
+                  <Typography
+                    variant="body2"
+                    fontWeight="bold"
+                    sx={{
+                      width: "50%",
+                      borderRight: "1px solid black",
+                    }}
+                  >
+                    Grand Total{" "}
+                  </Typography>
+                  <Typography fontWeight="bold" variant="body2">
+                    ₹{finalTotal}
+                  </Typography>
+                </Stack>
               </Stack>
             </Stack>
+
             <Stack
               sx={{
                 p: 1,

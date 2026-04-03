@@ -240,18 +240,16 @@ export default function NewInvoice() {
       items,
     };
 
-    if (editId) {
-      await window.electron.invoke("update-invoice", Number(editId), payload);
-    } else {
-      await window.electron.invoke("save-invoice", payload);
-    }
+    const id = editId
+      ? await window.electron.invoke("update-invoice", Number(editId), payload)
+      : await window.electron.invoke("save-invoice", payload);
 
     setOpenSnackbar(true);
     handleClear();
 
     navigate(
       PATH_DASHBOARD.preview
-        .replace(":invoiceId", String(editId))
+        .replace(":invoiceId", String(editId || id))
         .replace(":isPrint", String(true)),
     );
   };
