@@ -57,6 +57,10 @@ export default function InvoicePreview() {
 
   const gstAmount = (subtotal * invoice.custom_gst) / 100;
   const finalTotal = subtotal + gstAmount - invoice.discount;
+  const halfGST = invoice.custom_gst / 2;
+
+  const cgstAmount = gstAmount / 2;
+  const sgstAmount = gstAmount / 2;
 
   return (
     <>
@@ -133,6 +137,15 @@ export default function InvoicePreview() {
               Scan for Location
             </Typography>
           </Box>
+
+          <Typography
+            variant="h6"
+            fontSize={12}
+            textAlign={"center"}
+            fontWeight={"bold"}
+          >
+            GSTIN : {APP_SHOP.GST}
+          </Typography>
 
           <Typography variant="h6" fontWeight="bold" textAlign={"center"}>
             <u>Invoice</u>
@@ -224,14 +237,19 @@ export default function InvoicePreview() {
                 </Typography>
                 {/* Customer Info */}
                 <Typography variant="body2">
-                  <b>Customer:</b> {invoice.name}
+                  <b>Customer:</b> {invoice.customer_name}
                 </Typography>
                 <Typography variant="body2">
-                  <b>Phone:</b> {invoice.phone}
+                  <b>Phone:</b> {invoice.customer_phone}
                 </Typography>
                 <Typography variant="body2">
-                  <b>Address:</b> {invoice.address}
+                  <b>Address:</b> {invoice.customer_address}
                 </Typography>
+                {invoice.customer_gstin && (
+                  <Typography variant="body2">
+                    <b>GSTIN:</b> {invoice.customer_gstin}
+                  </Typography>
+                )}
               </Stack>
             </Stack>
             <Divider />
@@ -274,7 +292,8 @@ export default function InvoicePreview() {
               <Stack
                 sx={{
                   width: "50%",
-                  p: 1,
+                  p: 2,
+                  justifyContent: "space-around",
                 }}
               >
                 <Typography fontSize={16} fontWeight={"bold"}>
@@ -303,11 +322,13 @@ export default function InvoicePreview() {
                     border: "1px solid black",
                     flexDirection: "row",
                     gap: 1,
-                    p: 0.5,
+                    p: 0.1,
+                    pl: 0.5,
                   }}
                 >
                   <Typography
                     variant="body2"
+                    fontSize={12}
                     sx={{
                       width: "50%",
                       borderRight: "1px solid black",
@@ -315,28 +336,9 @@ export default function InvoicePreview() {
                   >
                     Subtotal{" "}
                   </Typography>
-                  <Typography variant="body2">₹{subtotal}</Typography>
-                </Stack>
-
-                {/* GST */}
-                <Stack
-                  sx={{
-                    border: "1px solid black",
-                    flexDirection: "row",
-                    gap: 1,
-                    p: 0.5,
-                  }}
-                >
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      width: "50%",
-                      borderRight: "1px solid black",
-                    }}
-                  >
-                    GST{" "}
+                  <Typography variant="body2" fontSize={12}>
+                    ₹{subtotal}
                   </Typography>
-                  <Typography variant="body2">₹{gstAmount}</Typography>
                 </Stack>
 
                 {/* Discount */}
@@ -345,11 +347,13 @@ export default function InvoicePreview() {
                     border: "1px solid black",
                     flexDirection: "row",
                     gap: 1,
-                    p: 0.5,
+                    p: 0.1,
+                    pl: 0.5,
                   }}
                 >
                   <Typography
                     variant="body2"
+                    fontSize={12}
                     sx={{
                       width: "50%",
                       borderRight: "1px solid black",
@@ -357,7 +361,110 @@ export default function InvoicePreview() {
                   >
                     Discount{" "}
                   </Typography>
-                  <Typography variant="body2">₹{invoice.discount}</Typography>
+                  <Typography variant="body2" fontSize={12}>
+                    ₹{invoice.discount}
+                  </Typography>
+                </Stack>
+
+                {/* Taxable Amount */}
+                <Stack
+                  sx={{
+                    border: "1px solid black",
+                    flexDirection: "row",
+                    gap: 1,
+                    p: 0.1,
+                    pl: 0.5,
+                  }}
+                >
+                  <Typography
+                    variant="body2"
+                    fontSize={12}
+                    sx={{
+                      width: "50%",
+                      borderRight: "1px solid black",
+                    }}
+                  >
+                    Taxable Amount{" "}
+                  </Typography>
+                  <Typography variant="body2" fontSize={12}>
+                    ₹{subtotal - invoice.discount}
+                  </Typography>
+                </Stack>
+
+                {/* CGST */}
+                <Stack
+                  sx={{
+                    border: "1px solid black",
+                    flexDirection: "row",
+                    gap: 1,
+                    p: 0.1,
+                    pl: 0.5,
+                  }}
+                >
+                  <Typography
+                    variant="body2"
+                    fontSize={12}
+                    sx={{
+                      width: "50%",
+                      borderRight: "1px solid black",
+                    }}
+                  >
+                    CGST ({halfGST}%)
+                  </Typography>
+                  <Typography variant="body2" fontSize={12}>
+                    ₹{cgstAmount}
+                  </Typography>
+                </Stack>
+
+                {/* SGST */}
+                <Stack
+                  sx={{
+                    border: "1px solid black",
+                    flexDirection: "row",
+                    gap: 1,
+                    p: 0.1,
+                    pl: 0.5,
+                  }}
+                >
+                  <Typography
+                    variant="body2"
+                    fontSize={12}
+                    sx={{
+                      width: "50%",
+                      borderRight: "1px solid black",
+                    }}
+                  >
+                    SGST ({halfGST}%)
+                  </Typography>
+                  <Typography variant="body2" fontSize={12}>
+                    ₹{sgstAmount}
+                  </Typography>
+                </Stack>
+                {/* TOTAL GST */}
+                <Stack
+                  sx={{
+                    border: "1px solid black",
+                    flexDirection: "row",
+                    gap: 1,
+                    p: 0.1,
+                    pl: 0.5,
+                    background: "#f9f9f9",
+                  }}
+                >
+                  <Typography
+                    variant="body2"
+                    fontWeight="bold"
+                    fontSize={12}
+                    sx={{
+                      width: "50%",
+                      borderRight: "1px solid black",
+                    }}
+                  >
+                    Total GST ({invoice.custom_gst}%)
+                  </Typography>
+                  <Typography variant="body2" fontWeight="bold" fontSize={12}>
+                    ₹{gstAmount}
+                  </Typography>
                 </Stack>
 
                 {/* Pending */}
@@ -367,11 +474,13 @@ export default function InvoicePreview() {
                       border: "1px solid black",
                       flexDirection: "row",
                       gap: 1,
-                      p: 0.5,
+                      p: 0.1,
+                      pl: 0.5,
                     }}
                   >
                     <Typography
                       variant="body2"
+                      fontSize={12}
                       sx={{
                         width: "50%",
                         borderRight: "1px solid red",
@@ -380,7 +489,7 @@ export default function InvoicePreview() {
                     >
                       Pending{" "}
                     </Typography>
-                    <Typography variant="body2" color="red">
+                    <Typography variant="body2" color="red" fontSize={12}>
                       ₹{invoice.pending_amount}
                     </Typography>
                   </Stack>
@@ -392,12 +501,13 @@ export default function InvoicePreview() {
                     border: "1px solid black",
                     flexDirection: "row",
                     gap: 1,
-                    p: 0.5,
+                    p: 0.2,
                   }}
                 >
                   <Typography
                     variant="body2"
                     fontWeight="bold"
+                    fontSize={12}
                     sx={{
                       width: "50%",
                       borderRight: "1px solid black",
@@ -405,7 +515,7 @@ export default function InvoicePreview() {
                   >
                     Grand Total{" "}
                   </Typography>
-                  <Typography fontWeight="bold" variant="body2">
+                  <Typography fontWeight="bold" variant="body2" fontSize={12}>
                     ₹{finalTotal}
                   </Typography>
                 </Stack>

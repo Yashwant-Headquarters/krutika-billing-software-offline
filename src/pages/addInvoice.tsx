@@ -66,6 +66,7 @@ export default function NewInvoice() {
 
   const [customGst, setCustomGst] = useState(0);
   const [discount, setDiscount] = useState(0);
+  const [customerGST, setCustomerGST] = useState("");
 
   const [items, setItems] = useState<Item[]>([
     { item_name: "", quantity: 1, price: 0 },
@@ -97,6 +98,7 @@ export default function NewInvoice() {
     setCustomGst(invoice.custom_gst);
     setDiscount(invoice.discount);
     setStatus(invoice.status);
+    setCustomerGST(invoice.gstin || "");
 
     setItems(
       items.map((i: any) => ({
@@ -110,14 +112,22 @@ export default function NewInvoice() {
   /* =========================
      CALCULATIONS
   ========================= */
-
   const subtotal = items.reduce(
     (sum, item) => sum + item.quantity * item.price,
     0,
   );
 
-  const gstAmount = toMoney((subtotal * customGst) / 100);
-  const finalTotal = toMoney(subtotal + gstAmount - discount);
+  // ✅ Discount cannot exceed subtotal
+  const safeDiscount = Math.min(discount, subtotal);
+
+  // ✅ Taxable value (REAL GST BASE)
+  const taxableAmount = subtotal - safeDiscount;
+
+  // ✅ GST on taxable value
+  const gstAmount = toMoney((taxableAmount * customGst) / 100);
+
+  // ✅ Final total
+  const finalTotal = toMoney(taxableAmount + gstAmount);
 
   /* =========================
      VALIDATION
@@ -195,6 +205,7 @@ export default function NewInvoice() {
         name: customerName,
         phone: customerPhone,
         address: customerAddress,
+        gstin: customerGST || null,
       },
       date,
       custom_gst: customGst,
@@ -206,7 +217,7 @@ export default function NewInvoice() {
 
     if (editId) {
       await window.electron.invoke("update-invoice", Number(editId), payload);
-      navigate(PATH_DASHBOARD.invoiceList);
+      navigate(-1);
     } else {
       await window.electron.invoke("save-invoice", payload);
     }
@@ -231,11 +242,12 @@ export default function NewInvoice() {
         name: customerName,
         phone: customerPhone,
         address: customerAddress,
+        gstin: customerGST || null,
       },
       date,
       custom_gst: customGst,
       discount,
-      pending_amount: finalTotal - paidAmount,
+      pending_amount: status == "UNPAID" ? finalTotal - paidAmount : 0,
       status,
       items,
     };
@@ -283,6 +295,7 @@ export default function NewInvoice() {
       {/* Shop Info */}
       <Card sx={{ p: 3, background: "#f5f5f5" }}>
         <Stack spacing={0.5}>
+          <Typography>GSTIN : {APP_SHOP.GST}</Typography>
           <Typography fontWeight="bold">{APP_SHOP.name}</Typography>
           <Typography>{APP_SHOP.phoneNumber}</Typography>
           <Typography>{APP_SHOP.address}</Typography>
@@ -334,6 +347,12 @@ export default function NewInvoice() {
             label="Customer Address"
             value={customerAddress}
             onChange={(e) => setCustomerAddress(e.target.value)}
+          />
+
+          <TextField
+            label="Customer GSTIN (Optional)"
+            value={customerGST}
+            onChange={(e) => setCustomerGST(e.target.value.toUpperCase())}
           />
 
           <TextField
@@ -507,7 +526,16 @@ export default function NewInvoice() {
             type="number"
             label="Discount ₹"
             value={discount}
-            onChange={(e) => setDiscount(Number(e.target.value))}
+            onChange={(e) => {
+              const value = Number(e.target.value);
+              const maxDiscount = subtotal;
+
+              if (value > maxDiscount) {
+                setDiscount(maxDiscount);
+              } else {
+                setDiscount(value);
+              }
+            }}
             sx={{
               "& input::-webkit-outer-spin-button, & input::-webkit-inner-spin-button":
                 {
@@ -517,6 +545,12 @@ export default function NewInvoice() {
                 MozAppearance: "textfield",
               },
             }}
+            error={discount > subtotal + gstAmount}
+            helperText={
+              discount > subtotal + gstAmount
+                ? "Discount cannot exceed total amount"
+                : ""
+            }
           />
           {status === "UNPAID" && (
             <TextField
@@ -550,14 +584,30 @@ export default function NewInvoice() {
 
           <Divider />
 
-          <Typography>Subtotal: ₹{toMoney(subtotal)}</Typography>
-          <Typography>GST: ₹{gstAmount}</Typography>
+          <Typography variant="body2">
+            Subtotal: ₹{toMoney(subtotal)}
+          </Typography>
+          <Typography variant="body2">
+            Taxable Amount: ₹{toMoney(taxableAmount)}
+          </Typography>
+          <Typography variant="body2">
+            CGST Amount: ₹{toMoney(gstAmount / 2)}
+          </Typography>
+          <Typography variant="body2">
+            SGST Amount: ₹{toMoney(gstAmount / 2)}
+          </Typography>
+          <Typography variant="body2">
+            Total GST Amount: ₹{toMoney(gstAmount)}
+          </Typography>
+          <Typography variant="body2">
+            Discount Amount: ₹{toMoney(discount)}
+          </Typography>
           <Typography fontWeight="bold" fontSize={18}>
             Total: ₹{finalTotal}
           </Typography>
           {status === "UNPAID" && (
             <Typography fontWeight="bold" fontSize={18}>
-              Pending: ₹{finalTotal - paidAmount}
+              Pending: ₹{toMoney(finalTotal - paidAmount)}
             </Typography>
           )}
         </Stack>

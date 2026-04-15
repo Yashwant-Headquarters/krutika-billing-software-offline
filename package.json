@@ -11,19 +11,13 @@
     "start": "concurrently \"vite\" \"electron .\"",
     "dist": "npm run build && electron-builder"
   },
-  "extraResources": [
-    {
-      "from": "public/icon.ico",
-      "to": "icon.ico"
-    }
-  ],
   "build": {
     "appId": "com.yashwant.emitra",
     "productName": "Stationary Invoice",
     "directories": {
       "output": "dist-electron"
     },
-    "icon": "public/favicon/favicon.ico",
+    "icon": "build/icon.ico",
     "files": [
       "dist/**/*",
       "electron/**/*",
@@ -38,7 +32,7 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": "public/icon.ico",
+      "icon": "build/icon.ico",
       "signAndEditExecutable": false
     },
     "nsis": {

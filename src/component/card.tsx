@@ -29,7 +29,7 @@ type Invoice = {
 
 type Props = {
   invoice: Invoice;
-  onDelete: (id: number) => void;
+  onDelete?: (id: number) => void;
 };
 
 export default function InvoiceCard({ invoice, onDelete }: Props) {
@@ -200,18 +200,20 @@ export default function InvoiceCard({ invoice, onDelete }: Props) {
         <DialogActions>
           <Button onClick={() => setOpenDelete(false)}>Cancel</Button>
 
-          <Button
-            color="error"
-            variant="contained"
-            onClick={() => {
-              if (selectedId !== null) {
-                onDelete(selectedId);
-              }
-              setOpenDelete(false);
-            }}
-          >
-            Delete
-          </Button>
+          {onDelete && (
+            <Button
+              color="error"
+              variant="contained"
+              onClick={() => {
+                if (selectedId !== null) {
+                  onDelete(selectedId);
+                }
+                setOpenDelete(false);
+              }}
+            >
+              Delete
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
     </Card>
