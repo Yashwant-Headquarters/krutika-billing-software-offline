@@ -114,6 +114,26 @@ function migrateDatabase() {
       `ALTER TABLE invoices ADD COLUMN pending_amount REAL DEFAULT 0`,
     ).run();
   } catch {}
+
+  try {
+    db.prepare(`ALTER TABLE customers ADD COLUMN gstin TEXT`).run();
+  } catch {}
+
+  try {
+    db.prepare(`ALTER TABLE invoices ADD COLUMN customer_name TEXT`).run();
+  } catch {}
+
+  try {
+    db.prepare(`ALTER TABLE invoices ADD COLUMN customer_phone TEXT`).run();
+  } catch {}
+
+  try {
+    db.prepare(`ALTER TABLE invoices ADD COLUMN customer_address TEXT`).run();
+  } catch {}
+
+  try {
+    db.prepare(`ALTER TABLE invoices ADD COLUMN customer_gstin TEXT`).run();
+  } catch {}
 }
 /* =========================
    GET CUSTOMERS (Pagination + Search)
@@ -221,7 +241,7 @@ ipcMain.handle("save-invoice", (_, data) => {
     ========================= */
 
     let customer: any = db
-      .prepare(`SELECT id, name, address FROM customers WHERE phone = ?`)
+      .prepare(`SELECT id, name, address, gstin FROM customers WHERE phone = ?`)
       .get(data.customer.phone);
 
     let customerId: number;
@@ -238,25 +258,37 @@ ipcMain.handle("save-invoice", (_, data) => {
       const addressChanged =
         normalize(customer.address) !== normalize(data.customer.address);
 
-      if (nameChanged || addressChanged) {
+      const gstChanged =
+        normalize(customer.gstin) !== normalize(data.customer.gstin);
+
+      if (nameChanged || addressChanged || gstChanged) {
         db.prepare(
           `
-      UPDATE customers
-      SET name = ?, address = ?
-      WHERE id = ?
-    `,
-        ).run(data.customer.name, data.customer.address, customerId);
-      } else {
+    UPDATE customers
+    SET name = ?, address = ?, gstin = ?
+    WHERE id = ?
+  `,
+        ).run(
+          data.customer.name,
+          data.customer.address,
+          data.customer.gstin || null,
+          customerId,
+        );
       }
     } else {
       const result = db
         .prepare(
           `
-    INSERT INTO customers (name, phone, address)
-    VALUES (?, ?, ?)
+    INSERT INTO customers (name, phone, address, gstin)
+VALUES (?, ?, ?, ?)
   `,
         )
-        .run(data.customer.name, data.customer.phone, data.customer.address);
+        .run(
+          data.customer.name,
+          data.customer.phone,
+          data.customer.address,
+          data.customer.gstin || null,
+        );
 
       customerId = result.lastInsertRowid as number;
     }
@@ -280,10 +312,17 @@ ipcMain.handle("save-invoice", (_, data) => {
     const invoiceResult = db
       .prepare(
         `
-        INSERT INTO invoices
-        (status, pending_amount, invoice_number, shop_name, shop_phone, shop_address,
-         customer_id, date, custom_gst, discount, total)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       INSERT INTO invoices (
+  status, pending_amount, invoice_number,
+  shop_name, shop_phone, shop_address,
+  customer_id,
+  customer_name,
+  customer_phone,
+  customer_address,
+  customer_gstin,
+  date, custom_gst, discount, total
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       )
       .run(
@@ -294,6 +333,10 @@ ipcMain.handle("save-invoice", (_, data) => {
         data.shop_phone,
         data.shop_address,
         customerId,
+        data.customer.name,
+        data.customer.phone,
+        data.customer.address,
+        data.customer.gstin || null,
         data.date,
         data.custom_gst,
         data.discount,
@@ -344,35 +387,48 @@ ipcMain.handle("save-invoice", (_, data) => {
 
 ipcMain.handle(
   "get-invoices",
-  (_, page: number, limit: number, search: string, date: string) => {
+  (
+    _,
+    page: number,
+    limit: number,
+    search: string,
+    date: string,
+    customerId?: number,
+  ) => {
     const offset = (page - 1) * limit;
 
-    let whereClause = "";
+    let whereClause = "1=1";
     let params: any[] = [];
+
+    if (customerId) {
+      whereClause += " AND invoices.customer_id = ?";
+      params.push(customerId);
+    }
 
     if (search && search.length >= 3) {
       whereClause += `
-        (invoices.invoice_number LIKE ? 
-         OR customers.name LIKE ?)
+        AND (
+          invoices.invoice_number LIKE ? 
+          OR COALESCE(invoices.customer_name, customers.name) LIKE ?
+        )
       `;
       params.push(`%${search}%`, `%${search}%`);
     }
 
     if (date) {
-      if (whereClause) whereClause += " AND ";
-      whereClause += `invoices.date = ?`;
+      whereClause += ` AND invoices.date = ?`;
       params.push(date);
     }
 
-    const whereSQL = whereClause ? `WHERE ${whereClause}` : "";
+    const whereSQL = `WHERE ${whereClause}`;
 
-    // Total Count
+    // Total
     const totalResult: any = db
       .prepare(
         `
         SELECT COUNT(*) as total
         FROM invoices
-        JOIN customers ON invoices.customer_id = customers.id
+        LEFT JOIN customers ON invoices.customer_id = customers.id
         ${whereSQL}
       `,
       )
@@ -380,13 +436,18 @@ ipcMain.handle(
 
     const total = totalResult.total;
 
-    // Paged Data
+    // Data
     const rows = db
       .prepare(
         `
-        SELECT invoices.*, customers.name as customer_name , customers.phone as customer_phone
+        SELECT 
+          invoices.*,
+          COALESCE(invoices.customer_name, customers.name) as customer_name,
+          COALESCE(invoices.customer_phone, customers.phone) as customer_phone,
+          COALESCE(invoices.customer_address, customers.address) as customer_address,
+          COALESCE(invoices.customer_gstin, customers.gstin) as customer_gstin
         FROM invoices
-        JOIN customers ON invoices.customer_id = customers.id
+        LEFT JOIN customers ON invoices.customer_id = customers.id
         ${whereSQL}
         ORDER BY invoices.id DESC
         LIMIT ? OFFSET ?
@@ -410,9 +471,14 @@ ipcMain.handle("get-invoice-details", (_, invoiceId: number) => {
   const invoice = db
     .prepare(
       `
-    SELECT invoices.*, customers.*
+    SELECT 
+      invoices.*,
+      COALESCE(invoices.customer_name, customers.name) as customer_name,
+      COALESCE(invoices.customer_phone, customers.phone) as customer_phone,
+      COALESCE(invoices.customer_address, customers.address) as customer_address,
+      COALESCE(invoices.customer_gstin, customers.gstin) as customer_gstin
     FROM invoices
-    JOIN customers ON invoices.customer_id = customers.id
+    LEFT JOIN customers ON invoices.customer_id = customers.id
     WHERE invoices.id = ?
   `,
     )
@@ -429,7 +495,6 @@ ipcMain.handle("get-invoice-details", (_, invoiceId: number) => {
 
   return { invoice, items };
 });
-
 /* =========================
    Export Customers
 ========================= */
@@ -594,38 +659,58 @@ ipcMain.handle("pending-customers", () => {
 // get-customer-details
 //
 
-ipcMain.handle("get-customer-details", (_, customerId) => {
-  const totalSpend =
-    (
-      db
-        .prepare(
-          `SELECT SUM(total) as total FROM invoices WHERE customer_id = ?`,
-        )
-        .get(customerId) as { total: number | null }
-    ).total || 0;
-
-  const pending =
-    (
-      db
-        .prepare(
-          `SELECT SUM(pending_amount) as pending FROM invoices WHERE customer_id = ?`,
-        )
-        .get(customerId) as { pending: number | null }
-    ).pending || 0;
-
-  const lastTransactions = db
+ipcMain.handle("get-customer-full-details", (_, customerId) => {
+  // Summary
+  const summary = db
     .prepare(
       `
-      SELECT invoice_number, date, total, status
+      SELECT 
+        SUM(total) as totalSpend,
+        SUM(pending_amount) as pending
+      FROM invoices
+      WHERE customer_id = ? AND status != 'CANCEL'
+    `,
+    )
+    .get(customerId);
+
+  // All invoices
+  const invoices = db
+    .prepare(
+      `
+      SELECT id, invoice_number, date, total, status, pending_amount
       FROM invoices
       WHERE customer_id = ?
-      ORDER BY id DESC
-      LIMIT 3
+      ORDER BY date DESC
     `,
     )
     .all(customerId);
 
-  return { totalSpend, pending, lastTransactions };
+  // Most bought items
+  const topItems = db
+    .prepare(
+      `
+      SELECT item_name, SUM(quantity) as qty
+      FROM invoice_items
+      JOIN invoices ON invoice_items.invoice_id = invoices.id
+      WHERE invoices.customer_id = ?
+      GROUP BY item_name
+      ORDER BY qty DESC
+      LIMIT 5
+    `,
+    )
+    .all(customerId);
+
+  // Customer info
+  const customer = db
+    .prepare(`SELECT * FROM customers WHERE id = ?`)
+    .get(customerId);
+
+  return {
+    customer,
+    summary,
+    invoices,
+    topItems,
+  };
 });
 
 //
@@ -713,40 +798,119 @@ ipcMain.handle("top-items", () => {
 
 ipcMain.handle("update-invoice", (_, id, data) => {
   const transaction = db.transaction(() => {
-    let subtotal = 0;
+    /* =========================
+       1️⃣ CUSTOMER UPDATE / INSERT
+    ========================= */
 
+    let customer: any = db
+      .prepare(`SELECT id, name, address, gstin FROM customers WHERE phone = ?`)
+      .get(data.customer.phone);
+
+    let customerId: number;
+
+    const normalize = (val: any) => (val || "").toString().trim().toLowerCase();
+
+    if (customer) {
+      customerId = customer.id;
+
+      const nameChanged =
+        normalize(customer.name) !== normalize(data.customer.name);
+
+      const addressChanged =
+        normalize(customer.address) !== normalize(data.customer.address);
+
+      const gstChanged =
+        normalize(customer.gstin) !== normalize(data.customer.gstin);
+
+      if (nameChanged || addressChanged || gstChanged) {
+        db.prepare(
+          `
+          UPDATE customers
+          SET name = ?, address = ?, gstin = ?
+          WHERE id = ?
+        `,
+        ).run(
+          data.customer.name,
+          data.customer.address,
+          data.customer.gstin || null,
+          customerId,
+        );
+      }
+    } else {
+      const result = db
+        .prepare(
+          `
+        INSERT INTO customers (name, phone, address, gstin)
+        VALUES (?, ?, ?, ?)
+      `,
+        )
+        .run(
+          data.customer.name,
+          data.customer.phone,
+          data.customer.address,
+          data.customer.gstin || null,
+        );
+
+      customerId = result.lastInsertRowid as number;
+    }
+
+    /* =========================
+       2️⃣ CALCULATION (FIXED GST)
+    ========================= */
+
+    let subtotal = 0;
     data.items.forEach((item: any) => {
       subtotal += item.quantity * item.price;
     });
 
-    const gstAmount = (subtotal * data.custom_gst) / 100;
-    const finalTotal = subtotal + gstAmount - data.discount;
+    const safeDiscount = Math.min(data.discount, subtotal);
+    const taxableAmount = subtotal - safeDiscount;
+    const gstAmount = (taxableAmount * data.custom_gst) / 100;
+    const finalTotal = taxableAmount + gstAmount;
 
     const pendingAmount =
       data.status === "UNPAID"
-        ? Math.max(0, finalTotal - data.paidAmount || 0)
+        ? Math.max(0, finalTotal - (data.paidAmount || 0))
         : 0;
-    // update invoice
+
+    /* =========================
+       3️⃣ UPDATE INVOICE
+    ========================= */
+
     db.prepare(
       `
       UPDATE invoices
-      SET status = ?, custom_gst = ?, discount = ?, total = ?, pending_amount = ?, date = ?
+      SET 
+        customer_name = ?,
+        customer_phone = ?,
+        customer_address = ?,
+        customer_gstin = ?,
+        status = ?, 
+        custom_gst = ?, 
+        discount = ?, 
+        total = ?, 
+        pending_amount = ?, 
+        date = ?,
+        customer_id = ?
       WHERE id = ?
     `,
     ).run(
       data.status,
       data.custom_gst,
-      data.discount,
+      safeDiscount,
       finalTotal,
       pendingAmount,
       data.date,
+      customerId,
       id,
     );
 
-    // delete old items
+    /* =========================
+       4️⃣ UPDATE ITEMS
+    ========================= */
+
     db.prepare(`DELETE FROM invoice_items WHERE invoice_id = ?`).run(id);
 
-    // insert new items
     const stmt = db.prepare(`
       INSERT INTO invoice_items (invoice_id, item_name, quantity, price, total)
       VALUES (?, ?, ?, ?, ?)
@@ -761,6 +925,21 @@ ipcMain.handle("update-invoice", (_, id, data) => {
         item.quantity * item.price,
       );
     });
+
+    /* =========================
+       5️⃣ UPDATE MASTER ITEMS
+    ========================= */
+
+    const masterStmt = db.prepare(`
+      INSERT OR IGNORE INTO items (name, price)
+      VALUES (?, ?)
+    `);
+
+    data.items.forEach((item: any) => {
+      masterStmt.run(item.item_name, item.price);
+    });
+
+    return true;
   });
 
   return transaction();

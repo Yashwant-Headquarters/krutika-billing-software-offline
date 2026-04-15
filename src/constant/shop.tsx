@@ -33,4 +33,6 @@ export const APP_SHOP = {
     accountNumber: 1628102100001929,
     ifscCode: "PUNB0162810",
   },
+
+  GST: "08GGMPS5773Q1Z0",
 };

@@ -8,6 +8,9 @@ import {
   Divider,
 } from "@mui/material";
 import IosShareIcon from "@mui/icons-material/IosShare";
+import { useNavigate } from "react-router-dom";
+import { PATH_DASHBOARD } from "../routes/paths";
+import RemoveRedEyeIcon from "@mui/icons-material/RemoveRedEye";
 
 type Customer = {
   id: number;
@@ -22,6 +25,7 @@ export default function Customers() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalResults, setTotalResults] = useState(0);
   const [search, setSearch] = useState("");
+  const navigate = useNavigate();
 
   const limit = 50;
 
@@ -98,17 +102,31 @@ export default function Customers() {
       {/* 📦 Customer Cards */}
       <Stack spacing={2}>
         {customers.map((cust) => (
-          <Card
-            key={cust.id}
-            sx={{ p: 2, cursor: "pointer" }}
-            onClick={() => handleOpen(cust.id)}
-          >
+          <Card key={cust.id} sx={{ p: 2, cursor: "pointer" }}>
             {/* Basic Info */}
-            <Typography fontWeight="bold">{cust.name}</Typography>
-            <Typography>{cust.phone}</Typography>
-            <Typography variant="body2" color="text.secondary">
-              {cust.address}
-            </Typography>
+            <Stack flexDirection={"row"} justifyContent={"space-between"}>
+              <Stack onClick={() => handleOpen(cust.id)}>
+                <Typography fontWeight="bold">{cust.name}</Typography>
+                <Typography>{cust.phone}</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {cust.address}
+                </Typography>
+              </Stack>
+              <Button
+                variant="contained"
+                startIcon={<RemoveRedEyeIcon />}
+                onClick={() =>
+                  navigate(
+                    PATH_DASHBOARD.customerDetail.replace(
+                      ":id",
+                      String(cust.id),
+                    ),
+                  )
+                }
+              >
+                View Detail
+              </Button>
+            </Stack>
 
             {/* Expand Section */}
             {openId === cust.id && details[cust.id] && (

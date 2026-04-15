@@ -7,6 +7,7 @@ import Customers from "../pages/customer";
 import InvoicePreview from "../pages/preview";
 import Dashboard from "../pages/dashboard";
 import InvoiceList from "../pages/home";
+import CustomerDetail from "../pages/customerDetail";
 
 // ----------------------------------------------------------------------
 
@@ -21,6 +22,7 @@ export function Router() {
         { path: PATH_DASHBOARD.newInvoice, element: <NewInvoice /> },
         { path: PATH_DASHBOARD.customer, element: <Customers /> },
         { path: PATH_DASHBOARD.preview, element: <InvoicePreview /> },
+        { path: PATH_DASHBOARD.customerDetail, element: <CustomerDetail /> },
         {
           path: "/dashboard",
           element: <Dashboard />,

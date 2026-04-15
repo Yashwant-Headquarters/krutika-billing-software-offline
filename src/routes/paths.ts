@@ -17,5 +17,6 @@ export const PATH_DASHBOARD = {
   preview: path(ROOTS_DASHBOARD, "/preview/:invoiceId/:isPrint"),
   edit: path(ROOTS_DASHBOARD, "/update-invoice/:editId"),
   customer: path(ROOTS_DASHBOARD, "/customer"),
+  customerDetail: path(ROOTS_DASHBOARD, "/customer/:id"),
   dashboard: path(ROOTS_DASHBOARD, "/dashboard"),
 };
