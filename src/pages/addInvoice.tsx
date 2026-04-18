@@ -91,14 +91,14 @@ export default function NewInvoice() {
     const { invoice, items } = res;
 
     setInvoiceNumber(invoice.invoice_number);
-    setCustomerName(invoice.name);
-    setCustomerPhone(invoice.phone);
-    setCustomerAddress(invoice.address);
+    setCustomerName(invoice.customer_name);
+    setCustomerPhone(invoice.customer_phone);
+    setCustomerAddress(invoice.customer_address);
     setDate(invoice.date);
     setCustomGst(invoice.custom_gst);
     setDiscount(invoice.discount);
     setStatus(invoice.status);
-    setCustomerGST(invoice.gstin || "");
+    setCustomerGST(invoice.customer_gstin || "");
 
     setItems(
       items.map((i: any) => ({
@@ -134,8 +134,8 @@ export default function NewInvoice() {
   ========================= */
 
   const isFormValid =
-    customerName.trim() !== "" &&
-    customerPhone.trim() !== "" &&
+    customerName?.trim() !== "" &&
+    customerPhone?.trim() !== "" &&
     items.length > 0 &&
     items.every(
       (item) =>
@@ -306,7 +306,6 @@ export default function NewInvoice() {
       <Card sx={{ p: 3 }}>
         <Stack spacing={2}>
           <Autocomplete
-            // key={customerName === "" ? "empty" : "filled"}
             freeSolo
             options={customerOptions}
             value={customerName}

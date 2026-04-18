@@ -895,6 +895,10 @@ ipcMain.handle("update-invoice", (_, id, data) => {
       WHERE id = ?
     `,
     ).run(
+      data.customer.name,
+      data.customer.phone,
+      data.customer.address,
+      data.customer.gstin || null,
       data.status,
       data.custom_gst,
       safeDiscount,
