@@ -1,7 +1,7 @@
 {
   "name": "emitra-billing",
   "private": true,
-  "version": "3.0.0",
+  "version": "3.0.5",
   "type": "module",
   "main": "electron/main.ts",
   "scripts": {
