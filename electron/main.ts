@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import path from "path";
 import { fileURLToPath } from "url";
 import Database from "better-sqlite3";
@@ -528,6 +528,77 @@ ipcMain.handle("export-customers-excel", async () => {
     bookType: "xlsx",
   });
 
+  fs.writeFileSync(filePath, buffer);
+
+  return true;
+});
+
+ipcMain.handle("open-external", (_, url: string) => {
+  if (!url) return false;
+  shell.openExternal(url);
+  return true;
+});
+
+ipcMain.handle("save-invoice-pdf", async (_, invoiceNumber: string) => {
+  if (!mainWindow) return false;
+
+  const { filePath } = await dialog.showSaveDialog({
+    defaultPath: `${invoiceNumber || "Invoice"}.pdf`,
+    filters: [{ name: "PDF", extensions: ["pdf"] }],
+  });
+
+  if (!filePath) return false;
+
+  const pdfData = await mainWindow.webContents.printToPDF({
+    printBackground: true,
+    pageSize: "A4",
+  });
+
+  fs.writeFileSync(filePath, pdfData);
+  return true;
+});
+
+ipcMain.handle("export-pending-invoices", async () => {
+  const rows = db
+    .prepare(
+      `
+      SELECT
+        invoices.invoice_number,
+        invoices.date,
+        invoices.status,
+        invoices.total,
+        invoices.pending_amount,
+        COALESCE(invoices.customer_name, customers.name) as customer_name,
+        COALESCE(invoices.customer_phone, customers.phone) as customer_phone,
+        COALESCE(invoices.customer_address, customers.address) as customer_address
+      FROM invoices
+      LEFT JOIN customers ON invoices.customer_id = customers.id
+      WHERE invoices.pending_amount > 0 AND invoices.status != 'CANCEL'
+      ORDER BY invoices.pending_amount DESC
+    `,
+    )
+    .all();
+
+  if (!rows.length) {
+    dialog.showMessageBox({
+      type: "info",
+      message: "No pending invoices found to export",
+    });
+    return false;
+  }
+
+  const { filePath } = await dialog.showSaveDialog({
+    defaultPath: "PendingInvoices.xlsx",
+    filters: [{ name: "Excel", extensions: ["xlsx"] }],
+  });
+
+  if (!filePath) return false;
+
+  const worksheet = XLSX.utils.json_to_sheet(rows);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Pending Invoices");
+
+  const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
   fs.writeFileSync(filePath, buffer);
 
   return true;

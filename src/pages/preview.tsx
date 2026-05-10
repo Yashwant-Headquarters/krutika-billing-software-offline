@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import PrintIcon from "@mui/icons-material/Print";
+import WhatsAppIcon from "@mui/icons-material/WhatsApp";
+import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import {
   Card,
   Typography,
@@ -48,6 +50,71 @@ export default function InvoicePreview() {
     window.print();
   };
 
+  const buildWhatsAppMessage = () => {
+    const subtotal = items.reduce(
+      (sum, item) => sum + item.quantity * item.price,
+      0,
+    );
+    const gstAmount = (subtotal * invoice.custom_gst) / 100;
+    const finalTotal = subtotal + gstAmount - invoice.discount;
+
+    const lines = [
+      `Hello ${invoice.customer_name || "Customer"},`,
+      "Your invoice has been generated successfully.",
+      "",
+
+      `Invoice No: ${invoice.invoice_number}`,
+      `Date: ${invoice.date}`,
+      `Status: ${invoice.status}`,
+      "",
+
+      "Items:",
+      ...items.map(
+        (item, index) =>
+          `${index + 1}. ${item.item_name} x${item.quantity} @ ₹${item.price} = ₹${item.total}`,
+      ),
+
+      "",
+      `Subtotal: ₹${subtotal.toFixed(2)}`,
+      `GST (${invoice.custom_gst}%): ₹${gstAmount.toFixed(2)}`,
+      `Discount: ₹${invoice.discount.toFixed(2)}`,
+      `Grand Total: ₹${finalTotal.toFixed(2)}`,
+
+      invoice.pending_amount
+        ? `Pending Amount: ₹${invoice.pending_amount.toFixed(2)}`
+        : "",
+
+      "",
+      `Shop Name: ${invoice.shop_name}`,
+      `Phone: ${invoice.shop_phone}`,
+
+      "",
+      "Thank you for your business!",
+    ];
+
+    return lines.filter(Boolean).join("\n");
+  };
+
+  const handleSendWhatsApp = async () => {
+    if (!invoice.customer_phone) {
+      alert("Customer phone number not available for WhatsApp message.");
+      return;
+    }
+
+    const rawPhone = invoice.customer_phone.replace(/[^0-9]/g, "");
+    const encodedText = encodeURIComponent(buildWhatsAppMessage());
+    const url =
+      rawPhone.length >= 8
+        ? `https://wa.me/${rawPhone}?text=${encodedText}`
+        : `https://web.whatsapp.com/send?text=${encodedText}`;
+
+    await window.electron.invoke("open-external", url);
+  };
+
+  const handleSaveAsPdf = async () => {
+    await window.electron.invoke("save-invoice-pdf", invoice.invoice_number);
+  };
+
   if (!invoice) return <Typography>Loading...</Typography>;
 
   const subtotal = items.reduce(
@@ -73,16 +140,33 @@ export default function InvoicePreview() {
             alignItems: "center",
             justifyContent: "center",
             my: 3,
+            gap: 1,
           }}
         >
-          <Button
-            variant="contained"
-            onClick={handlePrint}
-            sx={{ mt: 2 }}
-            startIcon={<PrintIcon />}
-          >
-            Print Invoice
-          </Button>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+            <Button
+              variant="contained"
+              onClick={handlePrint}
+              startIcon={<PrintIcon />}
+            >
+              Print Invoice
+            </Button>
+            <Button
+              variant="outlined"
+              onClick={handleSaveAsPdf}
+              startIcon={<PictureAsPdfIcon />}
+            >
+              Save as PDF
+            </Button>
+            <Button
+              variant="contained"
+              color="success"
+              onClick={handleSendWhatsApp}
+              startIcon={<WhatsAppIcon />}
+            >
+              Send WhatsApp
+            </Button>
+          </Stack>
         </Stack>
       )}
       <div id="invoice-print">

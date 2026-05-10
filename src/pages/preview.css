@@ -4,6 +4,15 @@
     margin: 10mm;
   }
 
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    width: 210mm;
+    height: 297mm;
+    background: white;
+  }
+
   body * {
     visibility: hidden;
   }
@@ -17,22 +26,39 @@
     position: absolute;
     left: 0;
     top: 0;
-    width: 100%;
-  }
-
-  #invoice-print {
     width: 210mm;
+    min-height: 297mm;
+    padding: 0;
+    box-shadow: none !important;
+    background: white;
   }
 
-  button {
+  button,
+  a,
+  .MuiButton-root {
     display: none !important;
   }
+
   table {
     page-break-inside: auto;
+    border-collapse: collapse;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tfoot {
+    display: table-footer-group;
   }
 
   tr {
     page-break-inside: avoid;
     page-break-after: auto;
+  }
+
+  td,
+  th {
+    border: 1px solid #000 !important;
   }
 }

@@ -10,6 +10,7 @@ import {
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
+import WhatsAppIcon from "@mui/icons-material/WhatsApp";
 import { APP_SHOP } from "../constant/shop";
 import Autocomplete from "@mui/material/Autocomplete";
 import Snackbar from "@mui/material/Snackbar";
@@ -264,6 +265,99 @@ export default function NewInvoice() {
         .replace(":invoiceId", String(editId || id))
         .replace(":isPrint", String(true)),
     );
+  };
+
+  const buildWhatsAppMessage = () => {
+    const lines = [
+      `Hello ${customerName || "Customer"},`,
+      `Your invoice has been generated successfully.`,
+      "",
+
+      `Invoice No: ${invoiceNumber}`,
+      `Date: ${date}`,
+      `Status: ${status}`,
+      "",
+
+      `Customer: ${customerName}`,
+      `Phone: ${customerPhone}`,
+      `Address: ${customerAddress}`,
+      "",
+
+      `Items:`,
+      ...items.map(
+        (item, index) =>
+          `${index + 1}. ${item.item_name} x${item.quantity} @ ₹${item.price.toFixed(
+            2,
+          )} = ₹${(item.quantity * item.price).toFixed(2)}`,
+      ),
+
+      "",
+      `Subtotal: ₹${toMoney(subtotal).toFixed(2)}`,
+      `GST (${customGst}%): ₹${toMoney(gstAmount).toFixed(2)}`,
+      `Discount: ₹${toMoney(discount).toFixed(2)}`,
+      `Grand Total: ₹${toMoney(finalTotal).toFixed(2)}`,
+
+      status === "UNPAID"
+        ? `Pending Amount: ₹${toMoney(finalTotal - paidAmount).toFixed(2)}`
+        : "",
+
+      "",
+      `Shop: ${APP_SHOP.name}`,
+      `Phone: ${APP_SHOP.phoneNumber}`,
+
+      "",
+      "Thank you for your business!",
+    ];
+
+    return lines.filter(Boolean).join("\n");
+  };
+
+  const handleSaveAndSendWhatsApp = async () => {
+    if (!isFormValid) return;
+
+    const payload = {
+      invoice_number: invoiceNumber,
+      shop_name: APP_SHOP.name,
+      shop_phone: APP_SHOP.phoneNumber,
+      shop_address: APP_SHOP.address,
+      customer: {
+        name: customerName,
+        phone: customerPhone,
+        address: customerAddress,
+        gstin: customerGST || null,
+      },
+      date,
+      custom_gst: customGst,
+      discount,
+      pending_amount: status == "UNPAID" ? finalTotal - paidAmount : 0,
+      status,
+      items,
+    };
+
+    await (editId
+      ? window.electron.invoke("update-invoice", Number(editId), payload)
+      : window.electron.invoke("save-invoice", payload));
+
+    if (!customerPhone.trim()) {
+      alert("Customer phone number required for WhatsApp message.");
+      return;
+    }
+
+    const phoneNumber = customerPhone.replace(/[^0-9]/g, "");
+    const encoded = encodeURIComponent(buildWhatsAppMessage());
+    const whatsappUrl =
+      phoneNumber.length >= 8
+        ? `https://wa.me/${phoneNumber}?text=${encoded}`
+        : `https://web.whatsapp.com/send?text=${encoded}`;
+
+    await window.electron.invoke("open-external", whatsappUrl);
+
+    setOpenSnackbar(true);
+    handleClear();
+
+    if (editId) {
+      navigate(-1);
+    }
   };
 
   const handleItemSearch = async (value: string) => {
@@ -614,7 +708,7 @@ export default function NewInvoice() {
 
       <Stack
         sx={{
-          flexDirection: "row",
+          flexDirection: { xs: "column", sm: "row" },
           gap: 2,
         }}
       >
@@ -634,6 +728,17 @@ export default function NewInvoice() {
           onClick={handleSaveAndPrint}
         >
           {editId ? "Update & Print" : "Save & Print"}
+        </Button>
+
+        <Button
+          variant="contained"
+          color="success"
+          size="large"
+          disabled={!isFormValid}
+          onClick={handleSaveAndSendWhatsApp}
+          startIcon={<WhatsAppIcon />}
+        >
+          {editId ? "Update & WhatsApp" : "Save & WhatsApp"}
         </Button>
       </Stack>
 

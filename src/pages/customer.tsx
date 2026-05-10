@@ -75,15 +75,26 @@ export default function Customers() {
         }}
       >
         <Typography variant="h4">Customers List</Typography>
-        <Button
-          variant="contained"
-          startIcon={<IosShareIcon />}
-          onClick={async () =>
-            await window.electron.invoke("export-customers-excel")
-          }
-        >
-          Export
-        </Button>
+        <Stack direction="row" spacing={1}>
+          <Button
+            variant="contained"
+            startIcon={<IosShareIcon />}
+            onClick={async () =>
+              await window.electron.invoke("export-customers-excel")
+            }
+          >
+            Export Customers
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<IosShareIcon />}
+            onClick={async () =>
+              await window.electron.invoke("export-pending-invoices")
+            }
+          >
+            Export Pending
+          </Button>
+        </Stack>
       </Stack>
 
       {/* 🔍 Search */}
