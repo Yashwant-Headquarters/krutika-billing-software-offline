@@ -558,6 +558,104 @@ ipcMain.handle("save-invoice-pdf", async (_, invoiceNumber: string) => {
   return true;
 });
 
+ipcMain.handle("export-invoices", async (_, search: string, date: string) => {
+  let whereClause = "1=1";
+  const params: any[] = [];
+
+  if (search && search.length >= 3) {
+    whereClause += `
+        AND (
+          invoices.invoice_number LIKE ?
+          OR COALESCE(invoices.customer_name, customers.name) LIKE ?
+        )
+      `;
+    params.push(`%${search}%`, `%${search}%`);
+  }
+
+  if (date) {
+    whereClause += ` AND invoices.date = ?`;
+    params.push(date);
+  }
+
+  const rows = db
+    .prepare(
+      `
+      SELECT
+        invoices.*, 
+        COALESCE(invoices.customer_name, customers.name) as customer_name,
+        COALESCE(invoices.customer_phone, customers.phone) as customer_phone,
+        COALESCE(invoices.customer_address, customers.address) as customer_address,
+        COALESCE(invoices.customer_gstin, customers.gstin) as customer_gstin
+      FROM invoices
+      LEFT JOIN customers ON invoices.customer_id = customers.id
+      WHERE ${whereClause}
+      ORDER BY invoices.id DESC
+    `,
+    )
+    .all(...params);
+
+  if (!rows.length) {
+    dialog.showMessageBox({
+      type: "info",
+      message: "No invoices found to export",
+    });
+    return false;
+  }
+
+  const invoiceIds = rows.map((invoice: any) => invoice.id);
+  const items = db
+    .prepare(
+      `
+      SELECT
+        invoice_items.id as item_id,
+        invoice_items.invoice_id,
+        invoice_items.item_name,
+        invoice_items.quantity,
+        invoice_items.price,
+        invoice_items.total
+      FROM invoice_items
+      WHERE invoice_items.invoice_id IN (${invoiceIds.map(() => "?").join(",")})
+      ORDER BY invoice_items.invoice_id, invoice_items.id
+    `,
+    )
+    .all(...invoiceIds);
+
+  const { filePath } = await dialog.showSaveDialog({
+    defaultPath: "Invoices.xlsx",
+    filters: [{ name: "Excel", extensions: ["xlsx"] }],
+  });
+
+  if (!filePath) return false;
+
+  const exportRows = rows.map((invoice: any) => {
+    const invoiceItems = items.filter(
+      (item: any) => item.invoice_id === invoice.id,
+    );
+
+    return {
+      ...invoice,
+      items: JSON.stringify(
+        invoiceItems.map((item: any) => ({
+          item_id: item.item_id,
+          item_name: item.item_name,
+          quantity: item.quantity,
+          price: item.price,
+          total: item.total,
+        })),
+      ),
+    };
+  });
+
+  const workbook = XLSX.utils.book_new();
+  const invoicesSheet = XLSX.utils.json_to_sheet(exportRows);
+  XLSX.utils.book_append_sheet(workbook, invoicesSheet, "Invoices");
+
+  const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+  fs.writeFileSync(filePath, buffer);
+
+  return true;
+});
+
 ipcMain.handle("export-pending-invoices", async () => {
   const rows = db
     .prepare(

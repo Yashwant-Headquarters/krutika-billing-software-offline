@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Stack, Typography, Button, TextField, Divider } from "@mui/material";
+import IosShareIcon from "@mui/icons-material/IosShare";
 import InvoiceCard from "../component/card";
 
 type Invoice = {
@@ -40,6 +41,10 @@ export default function InvoiceList() {
     setTotalResults(result.total);
   };
 
+  const handleExportInvoices = async () => {
+    await window.electron.invoke("export-invoices", search, dateFilter);
+  };
+
   useEffect(() => {
     loadInvoices();
   }, [page, search, dateFilter]);
@@ -51,7 +56,16 @@ export default function InvoiceList() {
 
   return (
     <Stack spacing={3} p={3}>
-      <Typography variant="h4">Invoice List</Typography>
+      <Stack direction="row" justifyContent="space-between" alignItems="center">
+        <Typography variant="h4">Invoice List</Typography>
+        <Button
+          variant="contained"
+          startIcon={<IosShareIcon />}
+          onClick={handleExportInvoices}
+        >
+          Export Invoices
+        </Button>
+      </Stack>
 
       {/* 🔍 Filters */}
       <Stack direction="row" spacing={2}>
