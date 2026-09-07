@@ -24,6 +24,9 @@ type DashboardData = {
   totalCustomers: number;
   totalInvoices: number;
   pending: number;
+  income: number;
+  payments: number;
+  expense: number;
 };
 
 export default function Dashboard() {
@@ -90,6 +93,21 @@ export default function Dashboard() {
       </Typography>
 
       <Stack direction="row" flexWrap="wrap" sx={{ gap: 2 }}>
+        <Card sx={{ p: 3, borderLeft: "5px solid #2e7d32" }}>
+          <Typography>Cash received</Typography>
+          <Typography variant="h5">{formatMoney(data.income)}</Typography>
+        </Card>
+
+        <Card sx={{ p: 3, borderLeft: "5px solid #ed6c02" }}>
+          <Typography>Client payments</Typography>
+          <Typography variant="h5">{formatMoney(data.payments)}</Typography>
+        </Card>
+
+        <Card sx={{ p: 3, borderLeft: "5px solid #d32f2f" }}>
+          <Typography>Expenses</Typography>
+          <Typography variant="h5">{formatMoney(data.expense)}</Typography>
+        </Card>
+
         <Card sx={{ p: 3, borderLeft: "5px solid #1976d2" }}>
           <Typography>Total Revenue</Typography>
           <Typography variant="h5">{formatMoney(data.totalRevenue)}</Typography>

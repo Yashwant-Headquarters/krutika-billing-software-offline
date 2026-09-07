@@ -99,6 +99,7 @@ export default function NewInvoice() {
     setCustomGst(invoice.custom_gst);
     setDiscount(invoice.discount);
     setStatus(invoice.status);
+    setPaidAmount(Number(invoice.paid_amount || 0));
     setCustomerGST(invoice.customer_gstin || "");
 
     setItems(
@@ -211,6 +212,7 @@ export default function NewInvoice() {
       date,
       custom_gst: customGst,
       discount,
+      paidAmount: status === "PAID" ? finalTotal : paidAmount,
       pending_amount: status == "UNPAID" ? finalTotal - paidAmount : 0,
       status,
       items,
@@ -248,6 +250,7 @@ export default function NewInvoice() {
       date,
       custom_gst: customGst,
       discount,
+      paidAmount: status === "PAID" ? finalTotal : paidAmount,
       pending_amount: status == "UNPAID" ? finalTotal - paidAmount : 0,
       status,
       items,
@@ -329,6 +332,7 @@ export default function NewInvoice() {
       date,
       custom_gst: customGst,
       discount,
+      paidAmount: status === "PAID" ? finalTotal : paidAmount,
       pending_amount: status == "UNPAID" ? finalTotal - paidAmount : 0,
       status,
       items,

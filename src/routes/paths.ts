@@ -18,5 +18,7 @@ export const PATH_DASHBOARD = {
   edit: path(ROOTS_DASHBOARD, "/update-invoice/:editId"),
   customer: path(ROOTS_DASHBOARD, "/customer"),
   customerDetail: path(ROOTS_DASHBOARD, "/customer/:id"),
+  crm: path(ROOTS_DASHBOARD, "/crm"),
+  accounting: path(ROOTS_DASHBOARD, "/accounting"),
   dashboard: path(ROOTS_DASHBOARD, "/dashboard"),
 };

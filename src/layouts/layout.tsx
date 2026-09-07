@@ -67,13 +67,17 @@ const Layout = () => {
         },
       }}
     >
-      <NavBar />
-      <Stack
-        sx={{
-          backgroundColor: theme.palette.grey[100],
-        }}
-      >
-        <Outlet />
+      <Stack direction="row" sx={{ minHeight: "100vh" }}>
+        <NavBar />
+        <Stack
+          sx={{
+            flex: 1,
+            minWidth: 0,
+            backgroundColor: theme.palette.grey[100],
+          }}
+        >
+          <Outlet />
+        </Stack>
       </Stack>
     </Stack>
   );

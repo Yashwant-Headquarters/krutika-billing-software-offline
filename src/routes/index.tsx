@@ -8,6 +8,8 @@ import InvoicePreview from "../pages/preview";
 import Dashboard from "../pages/dashboard";
 import InvoiceList from "../pages/home";
 import CustomerDetail from "../pages/customerDetail";
+import CRMPage from "../pages/crm";
+import AccountingPage from "../pages/accounting";
 
 // ----------------------------------------------------------------------
 
@@ -21,6 +23,8 @@ export function Router() {
         { path: PATH_DASHBOARD.invoiceList, element: <InvoiceList /> },
         { path: PATH_DASHBOARD.newInvoice, element: <NewInvoice /> },
         { path: PATH_DASHBOARD.customer, element: <Customers /> },
+        { path: PATH_DASHBOARD.crm, element: <CRMPage /> },
+        { path: PATH_DASHBOARD.accounting, element: <AccountingPage /> },
         { path: PATH_DASHBOARD.preview, element: <InvoicePreview /> },
         { path: PATH_DASHBOARD.customerDetail, element: <CustomerDetail /> },
         {

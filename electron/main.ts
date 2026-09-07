@@ -100,6 +100,69 @@ function initializeDatabase() {
   )
 `,
   ).run();
+
+  // Inventory tables
+  db.prepare(
+    `
+    CREATE TABLE IF NOT EXISTS products (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL,
+      category TEXT,
+      stock_qty REAL DEFAULT 0,
+      cost_price REAL DEFAULT 0,
+      sale_price REAL DEFAULT 0,
+      description TEXT
+    )
+  `,
+  ).run();
+
+  db.prepare(
+    `
+    CREATE TABLE IF NOT EXISTS stock_movements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_id INTEGER NOT NULL,
+      movement_type TEXT NOT NULL,
+      quantity REAL NOT NULL,
+      reference_type TEXT,
+      reference_id INTEGER,
+      note TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE
+    )
+  `,
+  ).run();
+
+  // CRM tables
+  db.prepare(
+    `
+    CREATE TABLE IF NOT EXISTS crm_followups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_id INTEGER NOT NULL,
+      note TEXT NOT NULL,
+      followup_date TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(customer_id) REFERENCES customers(id) ON DELETE CASCADE
+    )
+  `,
+  ).run();
+
+  // Accounting tables
+  db.prepare(
+    `
+    CREATE TABLE IF NOT EXISTS accounting_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      entry_type TEXT NOT NULL,
+      amount REAL NOT NULL,
+      description TEXT,
+      entry_date TEXT,
+      customer_id INTEGER,
+      invoice_id INTEGER,
+      reference TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(customer_id) REFERENCES customers(id) ON DELETE SET NULL
+    )
+  `,
+  ).run();
 }
 
 function migrateDatabase() {
@@ -107,34 +170,89 @@ function migrateDatabase() {
     db.prepare(
       `ALTER TABLE invoices ADD COLUMN status TEXT CHECK(status IN ('PAID','UNPAID','CANCEL')) DEFAULT 'PAID'`,
     ).run();
-  } catch {}
+  } catch { }
 
   try {
     db.prepare(
       `ALTER TABLE invoices ADD COLUMN pending_amount REAL DEFAULT 0`,
     ).run();
-  } catch {}
+  } catch { }
 
   try {
     db.prepare(`ALTER TABLE customers ADD COLUMN gstin TEXT`).run();
-  } catch {}
+  } catch { }
 
   try {
     db.prepare(`ALTER TABLE invoices ADD COLUMN customer_name TEXT`).run();
-  } catch {}
+  } catch { }
 
   try {
     db.prepare(`ALTER TABLE invoices ADD COLUMN customer_phone TEXT`).run();
-  } catch {}
+  } catch { }
 
   try {
     db.prepare(`ALTER TABLE invoices ADD COLUMN customer_address TEXT`).run();
-  } catch {}
+  } catch { }
 
   try {
     db.prepare(`ALTER TABLE invoices ADD COLUMN customer_gstin TEXT`).run();
-  } catch {}
+  } catch { }
 }
+function applyStockDelta(
+  productName: string,
+  quantityDelta: number,
+  referenceType: string,
+  referenceId: number | null,
+  note: string,
+) {
+  if (!productName) return;
+
+  const product = db
+    .prepare(`SELECT id, stock_qty FROM products WHERE name = ?`)
+    .get(productName);
+
+  if (!product) return;
+
+  const nextStock = Number(product.stock_qty) - Number(quantityDelta);
+  db.prepare(`UPDATE products SET stock_qty = ? WHERE id = ?`).run(
+    nextStock,
+    product.id,
+  );
+
+  db.prepare(
+    `
+    INSERT INTO stock_movements (
+      product_id, movement_type, quantity, reference_type, reference_id, note, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+  `,
+  ).run(
+    product.id,
+    quantityDelta > 0 ? "sale" : "stock_return",
+    Math.abs(Number(quantityDelta)),
+    referenceType,
+    referenceId,
+    note,
+  );
+}
+
+function createAccountingEntry(
+  entryType: string,
+  amount: number,
+  description: string,
+  entryDate: string,
+  customerId: number | null,
+  invoiceId: number | null,
+  reference: string,
+) {
+  db.prepare(
+    `
+    INSERT INTO accounting_entries (
+      entry_type, amount, description, entry_date, customer_id, invoice_id, reference, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+  `,
+  ).run(entryType, amount, description, entryDate, customerId, invoiceId, reference);
+}
+
 /* =========================
    GET CUSTOMERS (Pagination + Search)
 ========================= */
@@ -229,6 +347,286 @@ ipcMain.handle("search-customers", (_, search: string) => {
 
   return rows;
 });
+
+ipcMain.handle("get-products", () => {
+  return db
+    .prepare(
+      `
+      SELECT *
+      FROM products
+      ORDER BY name ASC
+    `,
+    )
+    .all();
+});
+
+ipcMain.handle("add-product", (_, data) => {
+  const result = db
+    .prepare(
+      `
+      INSERT INTO products (name, category, stock_qty, cost_price, sale_price, description)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `,
+    )
+    .run(
+      data.name,
+      data.category || null,
+      Number(data.stock_qty || 0),
+      Number(data.cost_price || 0),
+      Number(data.sale_price || 0),
+      data.description || null,
+    );
+
+  return result.lastInsertRowid;
+});
+
+ipcMain.handle("update-product", (_, id, data) => {
+  db.prepare(
+    `
+    UPDATE products
+    SET name = ?, category = ?, stock_qty = ?, cost_price = ?, sale_price = ?, description = ?
+    WHERE id = ?
+  `,
+  ).run(
+    data.name,
+    data.category || null,
+    Number(data.stock_qty || 0),
+    Number(data.cost_price || 0),
+    Number(data.sale_price || 0),
+    data.description || null,
+    id,
+  );
+  return true;
+});
+
+ipcMain.handle("delete-product", (_, id) => {
+  db.prepare(`DELETE FROM products WHERE id = ?`).run(id);
+  return true;
+});
+
+ipcMain.handle("get-stock-movements", (_, productId) => {
+  return db
+    .prepare(
+      `
+      SELECT *
+      FROM stock_movements
+      WHERE product_id = ?
+      ORDER BY id DESC
+    `,
+    )
+    .all(productId);
+});
+
+ipcMain.handle("get-crm-followups", (_, customerId) => {
+  return db
+    .prepare(
+      `
+      SELECT *
+      FROM crm_followups
+      WHERE customer_id = ?
+      ORDER BY followup_date ASC, id DESC
+    `,
+    )
+    .all(customerId);
+});
+
+ipcMain.handle("add-crm-followup", (_, customerId, note, followupDate) => {
+  db.prepare(
+    `
+    INSERT INTO crm_followups (customer_id, note, followup_date, created_at)
+    VALUES (?, ?, ?, datetime('now'))
+  `,
+  ).run(customerId, note, followupDate || null);
+  return true;
+});
+
+ipcMain.handle("get-accounting-entries", () => {
+  return db
+    .prepare(
+      `
+      SELECT *
+      FROM accounting_entries
+      ORDER BY entry_date DESC, id DESC
+    `,
+    )
+    .all();
+});
+
+ipcMain.handle("add-accounting-entry", (_, data) => {
+  const amount = Number(data.amount || 0);
+  if (amount <= 0) throw new Error("Amount must be greater than zero");
+
+  const transaction = db.transaction(() => {
+    if (data.entry_type === "payment") {
+      if (!data.customer_id) throw new Error("Customer is required for a payment");
+
+      let remaining = amount;
+      const invoices = db.prepare(`
+        SELECT id, pending_amount
+        FROM invoices
+        WHERE customer_id = ? AND status != 'CANCEL' AND pending_amount > 0
+        ORDER BY date ASC, id ASC
+      `).all(data.customer_id) as { id: number; pending_amount: number }[];
+
+      for (const invoice of invoices) {
+        if (remaining <= 0) break;
+        const applied = Math.min(remaining, Number(invoice.pending_amount));
+        db.prepare(`UPDATE invoices SET pending_amount = MAX(0, pending_amount - ?) WHERE id = ?`).run(applied, invoice.id);
+        db.prepare(`
+          INSERT INTO accounting_entries (entry_type, amount, description, entry_date, customer_id, invoice_id, reference, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        `).run(
+          "payment",
+          applied,
+          data.description || "Customer payment received",
+          data.entry_date || new Date().toISOString().slice(0, 10),
+          data.customer_id,
+          invoice.id,
+          data.reference || `Payment for invoice ${invoice.id}`,
+        );
+        remaining -= applied;
+      }
+
+      if (remaining > 0) {
+        db.prepare(`
+          INSERT INTO accounting_entries (entry_type, amount, description, entry_date, customer_id, invoice_id, reference, created_at)
+          VALUES (?, ?, ?, ?, ?, NULL, ?, datetime('now'))
+        `).run(
+          "payment",
+          remaining,
+          data.description || "Customer advance received",
+          data.entry_date || new Date().toISOString().slice(0, 10),
+          data.customer_id,
+          data.reference || "Customer advance",
+        );
+      }
+      return true;
+    }
+
+    db.prepare(
+      `INSERT INTO accounting_entries (entry_type, amount, description, entry_date, customer_id, invoice_id, reference, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+    ).run(
+      data.entry_type,
+      amount,
+      data.description || null,
+      data.entry_date || new Date().toISOString().slice(0, 10),
+      data.customer_id || null,
+      data.invoice_id || null,
+      data.reference || null,
+    );
+    return true;
+  });
+
+  return transaction();
+});
+
+ipcMain.handle("get-accounting-summary", () => {
+  const income = db
+    .prepare(`SELECT COALESCE(SUM(amount),0) as total FROM accounting_entries WHERE entry_type = 'income'`)
+    .get() as { total: number };
+  const payments = db
+    .prepare(`SELECT COALESCE(SUM(amount),0) as total FROM accounting_entries WHERE entry_type = 'payment'`)
+    .get() as { total: number };
+  const expense = db
+    .prepare(`SELECT COALESCE(SUM(amount),0) as total FROM accounting_entries WHERE entry_type = 'expense'`)
+    .get() as { total: number };
+  const receivable = db
+    .prepare(`SELECT COALESCE(SUM(pending_amount),0) as total FROM invoices WHERE status != 'CANCEL'`)
+    .get() as { total: number };
+
+  return {
+    income: Number(income.total || 0) + Number(payments.total || 0),
+    payments: Number(payments.total || 0),
+    expense: Number(expense.total || 0),
+    receivable: Number(receivable.total || 0),
+    balance: Number(income.total || 0) + Number(payments.total || 0) - Number(expense.total || 0),
+  };
+});
+
+function syncInvoiceInventory(invoiceId: number, items: any[]) {
+  const existingItems = db
+    .prepare(`SELECT item_name, quantity FROM invoice_items WHERE invoice_id = ?`)
+    .all(invoiceId);
+
+  existingItems.forEach((item: any) => {
+    const product = db
+      .prepare(`SELECT id FROM products WHERE name = ?`)
+      .get(item.item_name);
+
+    if (product) {
+      const currentQty = Number(item.quantity || 0);
+      db.prepare(`UPDATE products SET stock_qty = stock_qty + ? WHERE id = ?`).run(currentQty, product.id);
+    }
+  });
+
+  db.prepare(`DELETE FROM invoice_items WHERE invoice_id = ?`).run(invoiceId);
+
+  items.forEach((item: any) => {
+    const product = db
+      .prepare(`SELECT id FROM products WHERE name = ?`)
+      .get(item.item_name);
+
+    if (product) {
+      const qty = Number(item.quantity || 0);
+      db.prepare(`UPDATE products SET stock_qty = stock_qty - ? WHERE id = ?`).run(qty, product.id);
+      db.prepare(
+        `
+        INSERT INTO stock_movements (product_id, movement_type, quantity, reference_type, reference_id, note, created_at)
+        VALUES (?, 'sale', ?, 'invoice', ?, ?, datetime('now'))
+      `,
+      ).run(product.id, qty, invoiceId, `Invoice ${invoiceId}`);
+    }
+  });
+}
+
+function syncInvoiceAccounting(
+  invoiceId: number,
+  total: number,
+  pendingAmount: number,
+  paidAmount: number,
+  description: string,
+  customerId: number | null,
+) {
+  db.prepare(`DELETE FROM accounting_entries WHERE invoice_id = ? AND entry_type IN ('income', 'receivable')`).run(invoiceId);
+
+  const actualPaid = Number(paidAmount || 0);
+  const actualPending = Number(pendingAmount || 0);
+
+  if (actualPaid > 0) {
+    db.prepare(
+      `
+      INSERT INTO accounting_entries (entry_type, amount, description, entry_date, customer_id, invoice_id, reference, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `,
+    ).run(
+      "income",
+      actualPaid,
+      `${description} - received payment`,
+      new Date().toISOString().slice(0, 10),
+      customerId,
+      invoiceId,
+      `Invoice ${invoiceId}`,
+    );
+  }
+
+  if (actualPending > 0) {
+    db.prepare(
+      `
+      INSERT INTO accounting_entries (entry_type, amount, description, entry_date, customer_id, invoice_id, reference, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `,
+    ).run(
+      "receivable",
+      actualPending,
+      `${description} - pending amount`,
+      new Date().toISOString().slice(0, 10),
+      customerId,
+      invoiceId,
+      `Receivable ${invoiceId}`,
+    );
+  }
+}
 
 /* =========================
    SAVE INVOICE
@@ -365,6 +763,16 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       );
     });
 
+    syncInvoiceInventory(invoiceId, data.items);
+    syncInvoiceAccounting(
+      invoiceId,
+      finalTotal,
+      data.status === "UNPAID" ? Math.max(0, finalTotal - (data.paidAmount || 0)) : 0,
+      data.status === "PAID" ? (data.paidAmount || finalTotal) : (data.paidAmount || 0),
+      `Invoice ${data.invoice_number}`,
+      customerId,
+    );
+
     // Save to master items table for autocomplete
     const masterStmt = db.prepare(`
       INSERT OR IGNORE INTO items (name, price)
@@ -483,6 +891,14 @@ ipcMain.handle("get-invoice-details", (_, invoiceId: number) => {
   `,
     )
     .get(invoiceId);
+
+  const payments = db
+    .prepare(`SELECT COALESCE(SUM(amount), 0) as total FROM accounting_entries WHERE invoice_id = ? AND entry_type = 'payment'`)
+    .get(invoiceId) as { total: number };
+
+  if (invoice) {
+    (invoice as any).paid_amount = Math.max(0, Number((invoice as any).total || 0) - Number((invoice as any).pending_amount || 0) - Number(payments.total || 0));
+  }
 
   const items = db
     .prepare(
@@ -625,8 +1041,8 @@ ipcMain.handle("get-dashboard", () => {
           `SELECT SUM(total) as total FROM invoices WHERE status != 'CANCEL'`,
         )
         .get() as {
-        total: number | null;
-      }
+          total: number | null;
+        }
     ).total || 0;
 
   const totalCustomers = (
@@ -641,8 +1057,8 @@ ipcMain.handle("get-dashboard", () => {
         `SELECT COUNT(*) as count FROM invoices WHERE status != 'CANCEL'`,
       )
       .get() as {
-      count: number;
-    }
+        count: number;
+      }
   ).count;
 
   const pending =
@@ -654,7 +1070,15 @@ ipcMain.handle("get-dashboard", () => {
         .get() as { pending: number | null }
     ).pending || 0;
 
-  return { totalRevenue, totalCustomers, totalInvoices, pending };
+  const accounting = db.prepare(`
+    SELECT
+      COALESCE(SUM(CASE WHEN entry_type IN ('income', 'payment') THEN amount ELSE 0 END), 0) as income,
+      COALESCE(SUM(CASE WHEN entry_type = 'payment' THEN amount ELSE 0 END), 0) as payments,
+      COALESCE(SUM(CASE WHEN entry_type = 'expense' THEN amount ELSE 0 END), 0) as expense
+    FROM accounting_entries
+  `).get() as { income: number; payments: number; expense: number };
+
+  return { totalRevenue, totalCustomers, totalInvoices, pending, ...accounting };
 });
 
 //
@@ -939,9 +1363,13 @@ ipcMain.handle("update-invoice", (_, id, data) => {
     const gstAmount = (taxableAmount * data.custom_gst) / 100;
     const finalTotal = taxableAmount + gstAmount;
 
+    const priorPayments = (db
+      .prepare(`SELECT COALESCE(SUM(amount), 0) as total FROM accounting_entries WHERE invoice_id = ? AND entry_type = 'payment'`)
+      .get(id) as { total: number }).total;
+
     const pendingAmount =
       data.status === "UNPAID"
-        ? Math.max(0, finalTotal - (data.paidAmount || 0))
+        ? Math.max(0, finalTotal - (data.paidAmount || 0) - priorPayments)
         : 0;
 
     /* =========================
@@ -1000,6 +1428,16 @@ ipcMain.handle("update-invoice", (_, id, data) => {
         item.quantity * item.price,
       );
     });
+
+    syncInvoiceInventory(id, data.items);
+    syncInvoiceAccounting(
+      id,
+      finalTotal,
+      pendingAmount,
+      data.status === "PAID" ? (data.paidAmount || finalTotal) : (data.paidAmount || 0),
+      `Invoice ${data.invoice_number || id}`,
+      customerId,
+    );
 
     /* =========================
        5️⃣ UPDATE MASTER ITEMS
