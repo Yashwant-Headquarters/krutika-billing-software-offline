@@ -25,6 +25,8 @@ type Item = {
   price: number;
 };
 
+const MAX_INVOICE_ITEMS = 15;
+
 const getIndiaDate = () =>
   new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Kolkata",
@@ -139,6 +141,7 @@ export default function NewInvoice() {
     customerName?.trim() !== "" &&
     customerPhone?.trim() !== "" &&
     items.length > 0 &&
+    items.length <= MAX_INVOICE_ITEMS &&
     items.every(
       (item) =>
         item.item_name.trim() !== "" && item.quantity > 0 && item.price > 0,
@@ -167,6 +170,7 @@ export default function NewInvoice() {
   };
 
   const addItem = () => {
+    if (items.length >= MAX_INVOICE_ITEMS) return;
     setItems([...items, { item_name: "", quantity: 1, price: 0 }]);
   };
 
@@ -594,9 +598,16 @@ export default function NewInvoice() {
             </Stack>
           ))}
 
-          <Button startIcon={<AddIcon />} onClick={addItem}>
+          <Button
+            startIcon={<AddIcon />}
+            onClick={addItem}
+            disabled={items.length >= MAX_INVOICE_ITEMS}
+          >
             Add Item
           </Button>
+          <Typography variant="caption" color="text.secondary">
+            {items.length}/{MAX_INVOICE_ITEMS} items
+          </Typography>
         </Stack>
       </Card>
 

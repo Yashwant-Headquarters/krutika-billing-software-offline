@@ -172,11 +172,12 @@ export default function InvoicePreview() {
       <div id="invoice-print">
         <Card
           sx={{
-            p: 4,
+            p: 2,
             width: "210mm",
-            minHeight: "297mm",
+            minHeight: "140mm",
             margin: "auto",
             position: "relative",
+            boxShadow: "0 10px 30px rgba(15, 23, 42, 0.12)",
           }}
         >
           <Typography
@@ -216,7 +217,7 @@ export default function InvoicePreview() {
               flexDirection: "column",
             }}
           >
-            <QRCodeCanvas value={APP_SHOP.googleMapLink} size={90} />
+            <QRCodeCanvas value={APP_SHOP.googleMapLink} size={64} />
             <Typography fontWeight={"bold"} fontSize={10}>
               Scan for Location
             </Typography>

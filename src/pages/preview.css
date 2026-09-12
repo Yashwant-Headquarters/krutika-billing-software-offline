@@ -1,7 +1,7 @@
 @media print {
   @page {
-    size: A4;
-    margin: 10mm;
+    size: A5 landscape;
+    margin: 4mm;
   }
 
   html,
@@ -9,7 +9,7 @@
     margin: 0;
     padding: 0;
     width: 210mm;
-    height: 297mm;
+    height: 148mm;
     background: white;
   }
 
@@ -27,7 +27,8 @@
     left: 0;
     top: 0;
     width: 210mm;
-    min-height: 297mm;
+    height: 140mm;
+    min-height: 140mm;
     padding: 0;
     box-shadow: none !important;
     background: white;

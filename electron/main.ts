@@ -634,6 +634,10 @@ function syncInvoiceAccounting(
 
 ipcMain.handle("save-invoice", (_, data) => {
   const transaction = db.transaction(() => {
+    if (!Array.isArray(data.items) || data.items.length === 0 || data.items.length > 15) {
+      throw new Error("An invoice must contain between 1 and 15 items");
+    }
+
     /* =========================
        1️⃣ CHECK IF CUSTOMER EXISTS
     ========================= */
@@ -697,11 +701,22 @@ VALUES (?, ?, ?, ?)
 
     let subtotal = 0;
     data.items.forEach((item: any) => {
-      subtotal += item.quantity * item.price;
+      const quantity = Math.max(0, Number(item.quantity) || 0);
+      const price = Math.max(0, Number(item.price) || 0);
+      subtotal += quantity * price;
     });
 
-    const gstAmount = (subtotal * data.custom_gst) / 100;
-    const finalTotal = subtotal + gstAmount - data.discount;
+    const discount = Math.min(Math.max(0, Number(data.discount) || 0), subtotal);
+    const taxableAmount = subtotal - discount;
+    const gstAmount = (taxableAmount * Math.max(0, Number(data.custom_gst) || 0)) / 100;
+    const finalTotal = Number((taxableAmount + gstAmount).toFixed(2));
+    const invoiceStatus = data.status || "PAID";
+    const paidAmount = invoiceStatus === "PAID"
+      ? finalTotal
+      : Math.min(Math.max(0, Number(data.paidAmount) || 0), finalTotal);
+    const pendingAmount = invoiceStatus === "UNPAID"
+      ? Number((finalTotal - paidAmount).toFixed(2))
+      : 0;
 
     /* =========================
        3️⃣ INSERT INVOICE
@@ -724,8 +739,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       )
       .run(
-        data.status || "PAID",
-        data.pending_amount || 0,
+        invoiceStatus,
+        pendingAmount,
         data.invoice_number,
         data.shop_name,
         data.shop_phone,
@@ -737,7 +752,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         data.customer.gstin || null,
         data.date,
         data.custom_gst,
-        data.discount,
+        discount,
         finalTotal,
       );
 
@@ -767,8 +782,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     syncInvoiceAccounting(
       invoiceId,
       finalTotal,
-      data.status === "UNPAID" ? Math.max(0, finalTotal - (data.paidAmount || 0)) : 0,
-      data.status === "PAID" ? (data.paidAmount || finalTotal) : (data.paidAmount || 0),
+      pendingAmount,
+      paidAmount,
       `Invoice ${data.invoice_number}`,
       customerId,
     );
@@ -892,12 +907,8 @@ ipcMain.handle("get-invoice-details", (_, invoiceId: number) => {
     )
     .get(invoiceId);
 
-  const payments = db
-    .prepare(`SELECT COALESCE(SUM(amount), 0) as total FROM accounting_entries WHERE invoice_id = ? AND entry_type = 'payment'`)
-    .get(invoiceId) as { total: number };
-
   if (invoice) {
-    (invoice as any).paid_amount = Math.max(0, Number((invoice as any).total || 0) - Number((invoice as any).pending_amount || 0) - Number(payments.total || 0));
+    (invoice as any).paid_amount = Math.max(0, Number((invoice as any).total || 0) - Number((invoice as any).pending_amount || 0));
   }
 
   const items = db
@@ -967,7 +978,7 @@ ipcMain.handle("save-invoice-pdf", async (_, invoiceNumber: string) => {
 
   const pdfData = await mainWindow.webContents.printToPDF({
     printBackground: true,
-    pageSize: "A4",
+    pageSize: { width: 210000, height: 148000 },
   });
 
   fs.writeFileSync(filePath, pdfData);
@@ -1293,6 +1304,10 @@ ipcMain.handle("top-items", () => {
 
 ipcMain.handle("update-invoice", (_, id, data) => {
   const transaction = db.transaction(() => {
+    if (!Array.isArray(data.items) || data.items.length === 0 || data.items.length > 15) {
+      throw new Error("An invoice must contain between 1 and 15 items");
+    }
+
     /* =========================
        1️⃣ CUSTOMER UPDATE / INSERT
     ========================= */
@@ -1358,18 +1373,14 @@ ipcMain.handle("update-invoice", (_, id, data) => {
       subtotal += item.quantity * item.price;
     });
 
-    const safeDiscount = Math.min(data.discount, subtotal);
+    const safeDiscount = Math.min(Math.max(0, Number(data.discount) || 0), subtotal);
     const taxableAmount = subtotal - safeDiscount;
-    const gstAmount = (taxableAmount * data.custom_gst) / 100;
-    const finalTotal = taxableAmount + gstAmount;
-
-    const priorPayments = (db
-      .prepare(`SELECT COALESCE(SUM(amount), 0) as total FROM accounting_entries WHERE invoice_id = ? AND entry_type = 'payment'`)
-      .get(id) as { total: number }).total;
+    const gstAmount = (taxableAmount * Math.max(0, Number(data.custom_gst) || 0)) / 100;
+    const finalTotal = Number((taxableAmount + gstAmount).toFixed(2));
 
     const pendingAmount =
       data.status === "UNPAID"
-        ? Math.max(0, finalTotal - (data.paidAmount || 0) - priorPayments)
+        ? Math.max(0, finalTotal - Number(data.paidAmount || 0))
         : 0;
 
     /* =========================
