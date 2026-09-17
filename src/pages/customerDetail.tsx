@@ -34,6 +34,45 @@ import PaymentIcon from "@mui/icons-material/Payment";
 import ReceiptIcon from "@mui/icons-material/Receipt";
 import { PATH_DASHBOARD } from "../routes/paths";
 
+// Reusable table styling: cells never wrap, so the table scrolls horizontally
+const ledgerTableSx = {
+  borderRadius: 2,
+  border: "1px solid #e6ebf1",
+  overflowX: "auto" as const,
+  "&::-webkit-scrollbar": { width: "9px", height: "9px" },
+  "&::-webkit-scrollbar-track": { backgroundColor: "#f1f5f9" },
+  "&::-webkit-scrollbar-thumb": {
+    backgroundColor: "#c4ccd8",
+    borderRadius: "10px",
+    border: "2px solid #f1f5f9",
+  },
+  "&::-webkit-scrollbar-thumb:hover": { backgroundColor: "#94a3b8" },
+  "& .MuiTableCell-root": { whiteSpace: "nowrap" as const },
+};
+
+const ledgerHeadSx = {
+  "& .MuiTableCell-root": {
+    backgroundColor: "#f1f5f9",
+    fontWeight: 700,
+    color: "#334155",
+    whiteSpace: "nowrap" as const,
+    borderBottom: "1px solid #e2e8f0",
+  },
+};
+
+// created_at is stored by SQLite as UTC -> show clock time in local timezone
+const formatTime = (value?: string | null) => {
+  if (!value) return "";
+  const iso = value.includes("T") ? value : value.replace(" ", "T") + "Z";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+};
+
 export default function CustomerDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -210,7 +249,13 @@ export default function CustomerDetail() {
                 </Typography>
               )}
 
-              <Stack direction="row" spacing={1} mt={1} flexWrap="wrap" gap={0.5}>
+              <Stack
+                direction="row"
+                spacing={1}
+                mt={1}
+                flexWrap="wrap"
+                gap={0.5}
+              >
                 <Chip label="Active Client" color="success" size="small" />
                 {summary.pending > 0 ? (
                   <Chip
@@ -253,14 +298,21 @@ export default function CustomerDetail() {
       </Card>
 
       {/* 📊 SUMMARY STATS */}
-      <Stack direction={{ xs: "column", sm: "row" }} spacing={2} flexWrap="wrap">
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        spacing={2}
+        flexWrap="wrap"
+      >
         <Card sx={{ flex: 1, minWidth: 160, borderRadius: 2 }}>
           <CardContent sx={{ py: 2 }}>
             <Typography variant="body2" color="text.secondary">
               Total Spend
             </Typography>
             <Typography variant="h5" fontWeight="bold">
-              ₹{Number(summary.totalSpend || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+              ₹
+              {Number(summary.totalSpend || 0).toLocaleString("en-IN", {
+                minimumFractionDigits: 2,
+              })}
             </Typography>
           </CardContent>
         </Card>
@@ -275,7 +327,10 @@ export default function CustomerDetail() {
               fontWeight="bold"
               color={summary.pending > 0 ? "error.main" : "text.primary"}
             >
-              ₹{Number(summary.pending || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+              ₹
+              {Number(summary.pending || 0).toLocaleString("en-IN", {
+                minimumFractionDigits: 2,
+              })}
             </Typography>
           </CardContent>
         </Card>
@@ -290,7 +345,10 @@ export default function CustomerDetail() {
               fontWeight="bold"
               color={summary.advance > 0 ? "success.main" : "text.primary"}
             >
-              ₹{Number(summary.advance || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+              ₹
+              {Number(summary.advance || 0).toLocaleString("en-IN", {
+                minimumFractionDigits: 2,
+              })}
             </Typography>
           </CardContent>
         </Card>
@@ -379,23 +437,37 @@ export default function CustomerDetail() {
           </Stack>
         </Stack>
 
-        <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
+        <TableContainer component={Paper} variant="outlined" sx={ledgerTableSx}>
           <Table size="small">
-            <TableHead sx={{ backgroundColor: "#f8fafc" }}>
+            <TableHead sx={ledgerHeadSx}>
               <TableRow>
-                <TableCell><b># Invoice</b></TableCell>
-                <TableCell><b>Date</b></TableCell>
-                <TableCell><b>Total Amount</b></TableCell>
-                <TableCell><b>Pending</b></TableCell>
-                <TableCell><b>Status</b></TableCell>
-                <TableCell align="center"><b>Actions</b></TableCell>
+                <TableCell>
+                  <b># Invoice</b>
+                </TableCell>
+                <TableCell>
+                  <b>Date</b>
+                </TableCell>
+                <TableCell>
+                  <b>Total Amount</b>
+                </TableCell>
+                <TableCell>
+                  <b>Pending</b>
+                </TableCell>
+                <TableCell>
+                  <b>Status</b>
+                </TableCell>
+                <TableCell align="center">
+                  <b>Actions</b>
+                </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {invoices.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} align="center" sx={{ py: 3 }}>
-                    <Typography color="text.secondary">No invoices found for this customer.</Typography>
+                    <Typography color="text.secondary">
+                      No invoices found for this customer.
+                    </Typography>
                   </TableCell>
                 </TableRow>
               ) : (
@@ -406,15 +478,24 @@ export default function CustomerDetail() {
                     </TableCell>
                     <TableCell>{inv.date}</TableCell>
                     <TableCell>
-                      ₹{Number(inv.total || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                      ₹
+                      {Number(inv.total || 0).toLocaleString("en-IN", {
+                        minimumFractionDigits: 2,
+                      })}
                     </TableCell>
                     <TableCell>
                       {Number(inv.pending_amount || 0) > 0 ? (
-                        <Typography color="error" fontWeight="bold" fontSize={13}>
+                        <Typography
+                          color="error"
+                          fontWeight="bold"
+                          fontSize={13}
+                        >
                           ₹{Number(inv.pending_amount).toFixed(2)}
                         </Typography>
                       ) : (
-                        <Typography color="text.secondary" fontSize={13}>₹0.00</Typography>
+                        <Typography color="text.secondary" fontSize={13}>
+                          ₹0.00
+                        </Typography>
                       )}
                     </TableCell>
                     <TableCell>
@@ -432,7 +513,11 @@ export default function CustomerDetail() {
                       />
                     </TableCell>
                     <TableCell align="center">
-                      <Stack direction="row" spacing={1} justifyContent="center">
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        justifyContent="center"
+                      >
                         <Tooltip title="View Invoice">
                           <IconButton
                             size="small"
@@ -543,15 +628,25 @@ export default function CustomerDetail() {
           </Button>
         </Stack>
 
-        <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
+        <TableContainer component={Paper} variant="outlined" sx={ledgerTableSx}>
           <Table size="small">
-            <TableHead sx={{ backgroundColor: "#f8fafc" }}>
+            <TableHead sx={ledgerHeadSx}>
               <TableRow>
-                <TableCell><b>Date</b></TableCell>
-                <TableCell><b>Amount Paid</b></TableCell>
-                <TableCell><b>Applied For / Ref</b></TableCell>
-                <TableCell><b>Description</b></TableCell>
-                <TableCell align="center"><b>Actions</b></TableCell>
+                <TableCell>
+                  <b>Date</b>
+                </TableCell>
+                <TableCell>
+                  <b>Amount Paid</b>
+                </TableCell>
+                <TableCell>
+                  <b>Applied For / Ref</b>
+                </TableCell>
+                <TableCell>
+                  <b>Description</b>
+                </TableCell>
+                <TableCell align="center">
+                  <b>Actions</b>
+                </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -566,9 +661,23 @@ export default function CustomerDetail() {
               ) : (
                 payments.map((pm: any) => (
                   <TableRow key={pm.id} hover>
-                    <TableCell>{pm.entry_date || "-"}</TableCell>
-                    <TableCell sx={{ color: "success.main", fontWeight: "bold" }}>
-                      ₹{Number(pm.amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                    <TableCell>
+                      <Typography fontSize={13}>
+                        {pm.entry_date || "-"}
+                      </Typography>
+                      {pm.created_at && (
+                        <Typography fontSize={11} color="text.secondary">
+                          {formatTime(pm.created_at)}
+                        </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell
+                      sx={{ color: "success.main", fontWeight: "bold" }}
+                    >
+                      ₹
+                      {Number(pm.amount || 0).toLocaleString("en-IN", {
+                        minimumFractionDigits: 2,
+                      })}
                     </TableCell>
                     <TableCell>
                       {pm.invoice_number ? (
@@ -591,7 +700,11 @@ export default function CustomerDetail() {
                     </TableCell>
                     <TableCell>{pm.description || "-"}</TableCell>
                     <TableCell align="center">
-                      <Stack direction="row" spacing={1} justifyContent="center">
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        justifyContent="center"
+                      >
                         <Tooltip title="Edit Payment">
                           <IconButton
                             size="small"
@@ -639,12 +752,11 @@ export default function CustomerDetail() {
         fullWidth
       >
         <Box component="form" onSubmit={handleCreatePayment}>
-          <DialogTitle fontWeight="bold">
-            Record Client Payment
-          </DialogTitle>
+          <DialogTitle fontWeight="bold">Record Client Payment</DialogTitle>
           <DialogContent>
             <DialogContentText sx={{ mb: 2 }}>
-              Enter payment received from <b>{customer.name}</b>. It will clear pending dues or record as advance if extra.
+              Enter payment received from <b>{customer.name}</b>. It will clear
+              pending dues or record as advance if extra.
             </DialogContentText>
             <Stack spacing={2} mt={1}>
               <TextField
@@ -750,14 +862,12 @@ export default function CustomerDetail() {
       </Dialog>
 
       {/* 📌 DIALOG: DELETE PAYMENT CONFIRMATION */}
-      <Dialog
-        open={!!deletePaymentId}
-        onClose={() => setDeletePaymentId(null)}
-      >
+      <Dialog open={!!deletePaymentId} onClose={() => setDeletePaymentId(null)}>
         <DialogTitle fontWeight="bold">Delete Payment Record?</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Are you sure you want to delete this payment record? If this payment was applied to an invoice, the pending dues will be restored.
+            Are you sure you want to delete this payment record? If this payment
+            was applied to an invoice, the pending dues will be restored.
           </DialogContentText>
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
@@ -773,14 +883,12 @@ export default function CustomerDetail() {
       </Dialog>
 
       {/* 📌 DIALOG: DELETE INVOICE CONFIRMATION */}
-      <Dialog
-        open={!!deleteInvoiceId}
-        onClose={() => setDeleteInvoiceId(null)}
-      >
+      <Dialog open={!!deleteInvoiceId} onClose={() => setDeleteInvoiceId(null)}>
         <DialogTitle fontWeight="bold">Delete Invoice?</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Are you sure you want to delete this invoice? This will remove the invoice and restore any product inventory.
+            Are you sure you want to delete this invoice? This will remove the
+            invoice and restore any product inventory.
           </DialogContentText>
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>

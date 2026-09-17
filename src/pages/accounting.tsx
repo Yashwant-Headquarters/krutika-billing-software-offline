@@ -45,6 +45,7 @@ type Entry = {
   customer_name?: string | null;
   customer_phone?: string | null;
   invoice_id?: number | null;
+  created_at?: string | null;
 };
 
 type Summary = {
@@ -53,6 +54,32 @@ type Summary = {
   expense: number;
   receivable: number;
   balance: number;
+};
+
+// Reusable table styling: cells never wrap, so the table scrolls horizontally
+const ledgerTableSx = {
+  borderRadius: 2,
+  border: "1px solid #e6ebf1",
+  overflowX: "auto" as const,
+  "&::-webkit-scrollbar": { width: "9px", height: "9px" },
+  "&::-webkit-scrollbar-track": { backgroundColor: "#f1f5f9" },
+  "&::-webkit-scrollbar-thumb": {
+    backgroundColor: "#c4ccd8",
+    borderRadius: "10px",
+    border: "2px solid #f1f5f9",
+  },
+  "&::-webkit-scrollbar-thumb:hover": { backgroundColor: "#94a3b8" },
+  "& .MuiTableCell-root": { whiteSpace: "nowrap" as const },
+};
+
+const ledgerHeadSx = {
+  "& .MuiTableCell-root": {
+    backgroundColor: "#f1f5f9",
+    fontWeight: 700,
+    color: "#334155",
+    whiteSpace: "nowrap" as const,
+    borderBottom: "1px solid #e2e8f0",
+  },
 };
 
 export default function AccountingPage() {
@@ -87,6 +114,20 @@ export default function AccountingPage() {
 
   const findCustomer = (id: any) =>
     customers.find((c) => String(c.id) === String(id)) || null;
+
+  // created_at is stored by SQLite as a UTC string ("YYYY-MM-DD HH:MM:SS").
+  // Convert to the machine's local time and show just the clock time.
+  const formatTime = (value?: string | null) => {
+    if (!value) return "";
+    const iso = value.includes("T") ? value : value.replace(" ", "T") + "Z";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleTimeString("en-IN", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  };
 
   const getEntryMeta = (entry: Entry) => {
     switch (entry.entry_type) {
@@ -462,10 +503,10 @@ export default function AccountingPage() {
           <TableContainer
             component={Paper}
             variant="outlined"
-            sx={{ borderRadius: 2 }}
+            sx={ledgerTableSx}
           >
             <Table size="small">
-              <TableHead sx={{ backgroundColor: "#f8fafc" }}>
+              <TableHead sx={ledgerHeadSx}>
                 <TableRow>
                   <TableCell>
                     <b>Date</b>
@@ -510,7 +551,16 @@ export default function AccountingPage() {
                         entry.entry_type === "receivable");
                     return (
                       <TableRow key={entry.id} hover>
-                        <TableCell>{entry.entry_date || "-"}</TableCell>
+                        <TableCell>
+                          <Typography fontSize={13}>
+                            {entry.entry_date || "-"}
+                          </Typography>
+                          {entry.created_at && (
+                            <Typography fontSize={11} color="text.secondary">
+                              {formatTime(entry.created_at)}
+                            </Typography>
+                          )}
+                        </TableCell>
                         <TableCell>
                           <Chip
                             size="small"

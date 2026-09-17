@@ -663,15 +663,92 @@ ipcMain.handle("update-accounting-entry", (_, id: number, data: any) => {
 
     if (!existing) throw new Error("Accounting entry not found");
 
-    if (existing.entry_type === "payment" && existing.invoice_id) {
-      const diff = amount - Number(existing.amount || 0);
-      if (diff !== 0) {
+    const newType = data.entry_type || existing.entry_type;
+
+    /* =========================
+       PAYMENT ROWS drive invoice pending + advance.
+       Editing one must rebuild the allocation (same FIFO logic as creation)
+       so any surplus beyond pending dues correctly becomes customer advance.
+    ========================= */
+    if (existing.entry_type === "payment" || newType === "payment") {
+      // 1️⃣ Revert this row's original effect on the invoice it reduced
+      if (existing.entry_type === "payment" && existing.invoice_id) {
         db.prepare(
-          `UPDATE invoices SET pending_amount = MAX(0, pending_amount - ?) WHERE id = ?`,
-        ).run(diff, existing.invoice_id);
+          `UPDATE invoices SET pending_amount = MIN(total, pending_amount + ?) WHERE id = ?`,
+        ).run(Number(existing.amount || 0), existing.invoice_id);
       }
+
+      // 2️⃣ Remove the old row (it will be re-created from the allocation below)
+      db.prepare(`DELETE FROM accounting_entries WHERE id = ?`).run(id);
+
+      // 3️⃣ Re-apply the new amount
+      if (newType === "payment") {
+        const customerId = data.customer_id || existing.customer_id;
+        if (!customerId) throw new Error("Customer is required for a payment");
+
+        let remaining = amount;
+        const invoices = db
+          .prepare(
+            `SELECT id, pending_amount FROM invoices
+             WHERE customer_id = ? AND status != 'CANCEL' AND pending_amount > 0
+             ORDER BY date ASC, id ASC`,
+          )
+          .all(customerId) as { id: number; pending_amount: number }[];
+
+        for (const invoice of invoices) {
+          if (remaining <= 0) break;
+          const applied = Math.min(remaining, Number(invoice.pending_amount));
+          if (applied <= 0) continue;
+          db.prepare(
+            `UPDATE invoices SET pending_amount = MAX(0, pending_amount - ?) WHERE id = ?`,
+          ).run(applied, invoice.id);
+          db.prepare(
+            `INSERT INTO accounting_entries (entry_type, amount, description, entry_date, customer_id, invoice_id, reference, created_at)
+             VALUES ('payment', ?, ?, ?, ?, ?, ?, datetime('now'))`,
+          ).run(
+            applied,
+            data.description || "Customer payment received",
+            data.entry_date || existing.entry_date,
+            customerId,
+            invoice.id,
+            data.reference || `Payment for invoice ${invoice.id}`,
+          );
+          remaining = Number((remaining - applied).toFixed(2));
+        }
+
+        if (remaining > 0) {
+          db.prepare(
+            `INSERT INTO accounting_entries (entry_type, amount, description, entry_date, customer_id, invoice_id, reference, created_at)
+             VALUES ('payment', ?, ?, ?, ?, NULL, ?, datetime('now'))`,
+          ).run(
+            remaining,
+            data.description || "Customer advance received",
+            data.entry_date || existing.entry_date,
+            customerId,
+            data.reference || "Customer advance",
+          );
+        }
+      } else {
+        // Converted from a payment to a normal income/expense entry
+        db.prepare(
+          `INSERT INTO accounting_entries (entry_type, amount, description, entry_date, customer_id, invoice_id, reference, created_at)
+           VALUES (?, ?, ?, ?, ?, NULL, ?, datetime('now'))`,
+        ).run(
+          newType,
+          amount,
+          data.description || null,
+          data.entry_date || existing.entry_date,
+          data.customer_id || existing.customer_id || null,
+          data.reference || null,
+        );
+      }
+
+      return true;
     }
 
+    /* =========================
+       NON-PAYMENT rows: simple in-place update
+    ========================= */
     db.prepare(
       `
       UPDATE accounting_entries
@@ -685,7 +762,7 @@ ipcMain.handle("update-accounting-entry", (_, id: number, data: any) => {
       WHERE id = ?
     `,
     ).run(
-      data.entry_type || existing.entry_type,
+      newType,
       amount,
       data.description || null,
       data.entry_date || existing.entry_date,
@@ -710,7 +787,7 @@ ipcMain.handle("delete-accounting-entry", (_, id: number) => {
 
     if (existing.entry_type === "payment" && existing.invoice_id) {
       db.prepare(
-        `UPDATE invoices SET pending_amount = pending_amount + ? WHERE id = ?`,
+        `UPDATE invoices SET pending_amount = MIN(total, pending_amount + ?) WHERE id = ?`,
       ).run(Number(existing.amount || 0), existing.invoice_id);
     }
 
