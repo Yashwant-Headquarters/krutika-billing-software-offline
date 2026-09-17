@@ -1898,8 +1898,8 @@ function checkAndRunDailyBackup() {
   const backupDir = path.join(app.getPath("userData"), "backups");
   const todayBackupPath = path.join(backupDir, `emitra_backup_${dateStr}.db`);
 
-  // Target window: 1:00 PM to 3:00 PM IST (13:00 to 15:00)
-  const isInTimeWindow = hours >= 13 && hours < 15;
+  // Target window: 1:00 PM to 7:00 PM IST (13:00 to 17:00)
+  const isInTimeWindow = hours >= 13 && hours < 17;
 
   if (isInTimeWindow && !fs.existsSync(todayBackupPath)) {
     console.log(`[Backup] Triggering scheduled 1PM-3PM IST backup for ${dateStr}...`);
@@ -1911,10 +1911,10 @@ function startAutoBackupScheduler() {
   // Check once immediately after startup
   checkAndRunDailyBackup();
 
-  // Run periodic check every 10 minutes
+  // Run periodic check every 4 hours
   setInterval(() => {
     checkAndRunDailyBackup();
-  }, 10 * 60 * 1000);
+  }, 4 * 60 * 60 * 1000);
 }
 
 ipcMain.handle("create-manual-backup", async () => {
