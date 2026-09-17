@@ -316,6 +316,71 @@ function createAccountingEntry(
 }
 
 /* =========================
+   APPLY EXISTING CUSTOMER ADVANCE TO AN INVOICE
+   When a new bill is created as UNPAID/pending, any advance the
+   customer already had (payment entries not linked to an invoice)
+   is automatically adjusted against the new pending amount.
+   Returns the remaining (net) pending amount.
+========================= */
+
+function applyAdvanceToInvoice(
+  customerId: number | null,
+  invoiceId: number,
+  pending: number,
+): number {
+  let remaining = Number((Number(pending) || 0).toFixed(2));
+
+  if (!customerId || remaining <= 0) return Math.max(0, remaining);
+
+  const advanceEntries = db
+    .prepare(
+      `
+      SELECT id, amount
+      FROM accounting_entries
+      WHERE customer_id = ? AND entry_type = 'payment' AND invoice_id IS NULL
+      ORDER BY entry_date ASC, id ASC
+    `,
+    )
+    .all(customerId) as { id: number; amount: number }[];
+
+  for (const adv of advanceEntries) {
+    if (remaining <= 0) break;
+
+    const available = Number(adv.amount || 0);
+    if (available <= 0) continue;
+
+    const applied = Math.min(remaining, available);
+
+    if (applied >= available - 0.001) {
+      // Whole advance consumed -> link it to this invoice
+      db.prepare(
+        `UPDATE accounting_entries SET invoice_id = ? WHERE id = ?`,
+      ).run(invoiceId, adv.id);
+    } else {
+      // Partial consumption -> shrink the advance row and carve out a linked payment
+      db.prepare(`UPDATE accounting_entries SET amount = ? WHERE id = ?`).run(
+        Number((available - applied).toFixed(2)),
+        adv.id,
+      );
+      db.prepare(
+        `INSERT INTO accounting_entries (entry_type, amount, description, entry_date, customer_id, invoice_id, reference, created_at)
+         VALUES ('payment', ?, ?, date('now'), ?, ?, ?, datetime('now'))`,
+      ).run(
+        Number(applied.toFixed(2)),
+        `Adjusted against invoice`,
+        customerId,
+        invoiceId,
+        `Advance adjusted for invoice ${invoiceId}`,
+      );
+    }
+
+    remaining = Number((remaining - applied).toFixed(2));
+  }
+
+  return Math.max(0, Number(remaining.toFixed(2)));
+}
+
+/* =========================
    GET CUSTOMERS (Pagination + Search)
 ========================= */
 
@@ -920,10 +985,25 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     });
 
     syncInvoiceInventory(invoiceId, data.items);
+
+    // Adjust any pre-existing customer advance against the new pending amount
+    let effectivePending = pendingAmount;
+    if (invoiceStatus !== "CANCEL" && pendingAmount > 0) {
+      effectivePending = applyAdvanceToInvoice(
+        customerId,
+        invoiceId,
+        pendingAmount,
+      );
+      db.prepare(`UPDATE invoices SET pending_amount = ? WHERE id = ?`).run(
+        effectivePending,
+        invoiceId,
+      );
+    }
+
     syncInvoiceAccounting(
       invoiceId,
       finalTotal,
-      pendingAmount,
+      effectivePending,
       paidAmount,
       `Invoice ${data.invoice_number}`,
       customerId,
@@ -1396,7 +1476,7 @@ ipcMain.handle("get-customer-full-details", (_, customerId) => {
       `
       SELECT COALESCE(SUM(amount), 0) as total
       FROM accounting_entries
-      WHERE customer_id = ? AND entry_type = 'payment' AND (invoice_id IS NULL OR description LIKE '%advance%')
+      WHERE customer_id = ? AND entry_type = 'payment' AND invoice_id IS NULL
     `,
     )
     .get(customerId) as any;
