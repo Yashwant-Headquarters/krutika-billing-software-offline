@@ -197,6 +197,68 @@ function migrateDatabase() {
   try {
     db.prepare(`ALTER TABLE invoices ADD COLUMN customer_gstin TEXT`).run();
   } catch { }
+
+  // Auto-recovery for any invoices that lost item details
+  try {
+    const recoverableFromMovements = db
+      .prepare(
+        `
+        SELECT sm.reference_id as invoice_id, p.name as item_name, sm.quantity, p.sale_price as price
+        FROM stock_movements sm
+        JOIN products p ON sm.product_id = p.id
+        WHERE sm.reference_type = 'invoice'
+          AND sm.reference_id IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM invoice_items ii WHERE ii.invoice_id = sm.reference_id)
+      `,
+      )
+      .all();
+
+    if (recoverableFromMovements.length > 0) {
+      const insertStmt = db.prepare(`
+        INSERT INTO invoice_items (invoice_id, item_name, quantity, price, total)
+        VALUES (?, ?, ?, ?, ?)
+      `);
+      recoverableFromMovements.forEach((row: any) => {
+        const qty = Number(row.quantity || 1);
+        const price = Number(row.price || 0);
+        insertStmt.run(row.invoice_id, row.item_name, qty, price, qty * price);
+      });
+    }
+
+    const emptyInvoices = db
+      .prepare(
+        `
+        SELECT id, total, discount, custom_gst
+        FROM invoices
+        WHERE NOT EXISTS (SELECT 1 FROM invoice_items ii WHERE ii.invoice_id = invoices.id)
+      `,
+      )
+      .all();
+
+    if (emptyInvoices.length > 0) {
+      const fallbackStmt = db.prepare(`
+        INSERT INTO invoice_items (invoice_id, item_name, quantity, price, total)
+        VALUES (?, ?, ?, ?, ?)
+      `);
+      emptyInvoices.forEach((inv: any) => {
+        const gstRate = Number(inv.custom_gst || 0);
+        const total = Number(inv.total || 0);
+        const discount = Number(inv.discount || 0);
+        const taxable = gstRate > 0 ? total / (1 + gstRate / 100) : total;
+        const subtotal = Number((taxable + discount).toFixed(2));
+
+        fallbackStmt.run(
+          inv.id,
+          "General Bill Items / Services",
+          1,
+          subtotal || total || 0,
+          subtotal || total || 0,
+        );
+      });
+    }
+  } catch (err) {
+    console.error("Auto recovery error:", err);
+  }
 }
 function applyStockDelta(
   productName: string,
@@ -444,9 +506,13 @@ ipcMain.handle("get-accounting-entries", () => {
   return db
     .prepare(
       `
-      SELECT *
+      SELECT 
+        accounting_entries.*,
+        customers.name as customer_name,
+        customers.phone as customer_phone
       FROM accounting_entries
-      ORDER BY entry_date DESC, id DESC
+      LEFT JOIN customers ON accounting_entries.customer_id = customers.id
+      ORDER BY accounting_entries.entry_date DESC, accounting_entries.id DESC
     `,
     )
     .all();
@@ -521,6 +587,75 @@ ipcMain.handle("add-accounting-entry", (_, data) => {
   return transaction();
 });
 
+ipcMain.handle("update-accounting-entry", (_, id: number, data: any) => {
+  const amount = Number(data.amount || 0);
+  if (amount <= 0) throw new Error("Amount must be greater than zero");
+
+  const transaction = db.transaction(() => {
+    const existing = db
+      .prepare(`SELECT * FROM accounting_entries WHERE id = ?`)
+      .get(id) as any;
+
+    if (!existing) throw new Error("Accounting entry not found");
+
+    if (existing.entry_type === "payment" && existing.invoice_id) {
+      const diff = amount - Number(existing.amount || 0);
+      if (diff !== 0) {
+        db.prepare(
+          `UPDATE invoices SET pending_amount = MAX(0, pending_amount - ?) WHERE id = ?`,
+        ).run(diff, existing.invoice_id);
+      }
+    }
+
+    db.prepare(
+      `
+      UPDATE accounting_entries
+      SET 
+        entry_type = ?,
+        amount = ?,
+        description = ?,
+        entry_date = ?,
+        customer_id = ?,
+        reference = ?
+      WHERE id = ?
+    `,
+    ).run(
+      data.entry_type || existing.entry_type,
+      amount,
+      data.description || null,
+      data.entry_date || existing.entry_date,
+      data.customer_id || existing.customer_id || null,
+      data.reference || null,
+      id,
+    );
+
+    return true;
+  });
+
+  return transaction();
+});
+
+ipcMain.handle("delete-accounting-entry", (_, id: number) => {
+  const transaction = db.transaction(() => {
+    const existing = db
+      .prepare(`SELECT * FROM accounting_entries WHERE id = ?`)
+      .get(id) as any;
+
+    if (!existing) return true;
+
+    if (existing.entry_type === "payment" && existing.invoice_id) {
+      db.prepare(
+        `UPDATE invoices SET pending_amount = pending_amount + ? WHERE id = ?`,
+      ).run(Number(existing.amount || 0), existing.invoice_id);
+    }
+
+    db.prepare(`DELETE FROM accounting_entries WHERE id = ?`).run(id);
+    return true;
+  });
+
+  return transaction();
+});
+
 ipcMain.handle("get-accounting-summary", () => {
   const income = db
     .prepare(`SELECT COALESCE(SUM(amount),0) as total FROM accounting_entries WHERE entry_type = 'income'`)
@@ -545,22 +680,25 @@ ipcMain.handle("get-accounting-summary", () => {
 });
 
 function syncInvoiceInventory(invoiceId: number, items: any[]) {
-  const existingItems = db
-    .prepare(`SELECT item_name, quantity FROM invoice_items WHERE invoice_id = ?`)
+  const previousMovements = db
+    .prepare(
+      `SELECT product_id, quantity FROM stock_movements WHERE reference_type = 'invoice' AND reference_id = ?`,
+    )
     .all(invoiceId);
 
-  existingItems.forEach((item: any) => {
-    const product = db
-      .prepare(`SELECT id FROM products WHERE name = ?`)
-      .get(item.item_name);
-
-    if (product) {
-      const currentQty = Number(item.quantity || 0);
-      db.prepare(`UPDATE products SET stock_qty = stock_qty + ? WHERE id = ?`).run(currentQty, product.id);
+  previousMovements.forEach((movement: any) => {
+    if (movement.product_id) {
+      const qty = Number(movement.quantity || 0);
+      db.prepare(`UPDATE products SET stock_qty = stock_qty + ? WHERE id = ?`).run(
+        qty,
+        movement.product_id,
+      );
     }
   });
 
-  db.prepare(`DELETE FROM invoice_items WHERE invoice_id = ?`).run(invoiceId);
+  db.prepare(
+    `DELETE FROM stock_movements WHERE reference_type = 'invoice' AND reference_id = ?`,
+  ).run(invoiceId);
 
   items.forEach((item: any) => {
     const product = db
@@ -569,13 +707,16 @@ function syncInvoiceInventory(invoiceId: number, items: any[]) {
 
     if (product) {
       const qty = Number(item.quantity || 0);
-      db.prepare(`UPDATE products SET stock_qty = stock_qty - ? WHERE id = ?`).run(qty, product.id);
+      db.prepare(`UPDATE products SET stock_qty = stock_qty - ? WHERE id = ?`).run(
+        qty,
+        (product as any).id,
+      );
       db.prepare(
         `
         INSERT INTO stock_movements (product_id, movement_type, quantity, reference_type, reference_id, note, created_at)
         VALUES (?, 'sale', ?, 'invoice', ?, ?, datetime('now'))
       `,
-      ).run(product.id, qty, invoiceId, `Invoice ${invoiceId}`);
+      ).run((product as any).id, qty, invoiceId, `Invoice ${invoiceId}`);
     }
   });
 }
@@ -1036,7 +1177,31 @@ ipcMain.handle("export-pending-invoices", async () => {
 ========================= */
 
 ipcMain.handle("delete-invoice", (_, invoiceId: number) => {
-  db.prepare(`DELETE FROM invoices WHERE id = ?`).run(invoiceId);
+  const transaction = db.transaction(() => {
+    const previousMovements = db
+      .prepare(
+        `SELECT product_id, quantity FROM stock_movements WHERE reference_type = 'invoice' AND reference_id = ?`,
+      )
+      .all(invoiceId);
+
+    previousMovements.forEach((movement: any) => {
+      if (movement.product_id) {
+        const qty = Number(movement.quantity || 0);
+        db.prepare(
+          `UPDATE products SET stock_qty = stock_qty + ? WHERE id = ?`,
+        ).run(qty, movement.product_id);
+      }
+    });
+
+    db.prepare(
+      `DELETE FROM stock_movements WHERE reference_type = 'invoice' AND reference_id = ?`,
+    ).run(invoiceId);
+    db.prepare(`DELETE FROM accounting_entries WHERE invoice_id = ?`).run(
+      invoiceId,
+    );
+    db.prepare(`DELETE FROM invoices WHERE id = ?`).run(invoiceId);
+  });
+  transaction();
   return true;
 });
 
@@ -1211,10 +1376,42 @@ ipcMain.handle("get-customer-full-details", (_, customerId) => {
     .prepare(`SELECT * FROM customers WHERE id = ?`)
     .get(customerId);
 
+  // Client payments
+  const payments = db
+    .prepare(
+      `
+      SELECT 
+        accounting_entries.*,
+        invoices.invoice_number
+      FROM accounting_entries
+      LEFT JOIN invoices ON accounting_entries.invoice_id = invoices.id
+      WHERE accounting_entries.customer_id = ?
+      ORDER BY accounting_entries.entry_date DESC, accounting_entries.id DESC
+    `,
+    )
+    .all(customerId);
+
+  const advanceTotal = db
+    .prepare(
+      `
+      SELECT COALESCE(SUM(amount), 0) as total
+      FROM accounting_entries
+      WHERE customer_id = ? AND entry_type = 'payment' AND (invoice_id IS NULL OR description LIKE '%advance%')
+    `,
+    )
+    .get(customerId) as any;
+
+  const safeSummary = {
+    totalSpend: Number((summary as any)?.totalSpend || 0),
+    pending: Number((summary as any)?.pending || 0),
+    advance: Number(advanceTotal?.total || 0),
+  };
+
   return {
     customer,
-    summary,
+    summary: safeSummary,
     invoices,
+    payments,
     topItems,
   };
 });
@@ -1463,10 +1660,155 @@ ipcMain.handle("update-invoice", (_, id, data) => {
       masterStmt.run(item.item_name, item.price);
     });
 
-    return true;
+    return id;
   });
 
   return transaction();
+});
+
+/* =========================
+   DATABASE AUTO-BACKUP SYSTEM (IST 1PM - 3PM)
+========================= */
+
+function getISTDateInfo() {
+  const now = new Date();
+  const istString = now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
+  const istDate = new Date(istString);
+  const year = istDate.getFullYear();
+  const month = String(istDate.getMonth() + 1).padStart(2, "0");
+  const day = String(istDate.getDate()).padStart(2, "0");
+  const hours = istDate.getHours();
+  const minutes = istDate.getMinutes();
+  return {
+    dateStr: `${year}-${month}-${day}`,
+    hours,
+    minutes,
+    fullDate: istDate,
+  };
+}
+
+async function performDatabaseBackup(customLabel?: string) {
+  try {
+    if (!db) return null;
+
+    const backupDir = path.join(app.getPath("userData"), "backups");
+    if (!fs.existsSync(backupDir)) {
+      fs.mkdirSync(backupDir, { recursive: true });
+    }
+
+    const { dateStr } = getISTDateInfo();
+    const label = customLabel ? `_${customLabel}` : "";
+    const backupFileName = `emitra_backup_${dateStr}${label}.db`;
+    const backupFilePath = path.join(backupDir, backupFileName);
+
+    await db.backup(backupFilePath);
+    console.log(`[Backup] SQLite database backup created successfully: ${backupFilePath}`);
+
+    cleanupOldBackups(backupDir, 30);
+    return backupFilePath;
+  } catch (err) {
+    console.error("[Backup Error]: Failed to create database backup", err);
+    return null;
+  }
+}
+
+function cleanupOldBackups(backupDir: string, maxBackups = 30) {
+  try {
+    const files = fs
+      .readdirSync(backupDir)
+      .filter((file) => file.startsWith("emitra_backup_") && file.endsWith(".db"))
+      .map((file) => ({
+        name: file,
+        path: path.join(backupDir, file),
+        time: fs.statSync(path.join(backupDir, file)).mtimeMs,
+      }))
+      .sort((a, b) => b.time - a.time);
+
+    if (files.length > maxBackups) {
+      const toDelete = files.slice(maxBackups);
+      for (const item of toDelete) {
+        fs.unlinkSync(item.path);
+        console.log(`[Backup] Removed old backup: ${item.name}`);
+      }
+    }
+  } catch (e) {
+    console.error("[Backup Cleanup Error]:", e);
+  }
+}
+
+function checkAndRunDailyBackup() {
+  const { dateStr, hours } = getISTDateInfo();
+  const backupDir = path.join(app.getPath("userData"), "backups");
+  const todayBackupPath = path.join(backupDir, `emitra_backup_${dateStr}.db`);
+
+  // Target window: 1:00 PM to 3:00 PM IST (13:00 to 15:00)
+  const isInTimeWindow = hours >= 13 && hours < 15;
+
+  if (isInTimeWindow && !fs.existsSync(todayBackupPath)) {
+    console.log(`[Backup] Triggering scheduled 1PM-3PM IST backup for ${dateStr}...`);
+    performDatabaseBackup();
+  }
+}
+
+function startAutoBackupScheduler() {
+  // Check once immediately after startup
+  checkAndRunDailyBackup();
+
+  // Run periodic check every 10 minutes
+  setInterval(() => {
+    checkAndRunDailyBackup();
+  }, 10 * 60 * 1000);
+}
+
+ipcMain.handle("create-manual-backup", async () => {
+  const now = new Date();
+  const timeStr = `${now.getHours()}_${now.getMinutes()}_${now.getSeconds()}`;
+  const filePath = await performDatabaseBackup(`manual_${timeStr}`);
+  return { success: !!filePath, filePath };
+});
+
+ipcMain.handle("export-database-backup", async () => {
+  if (!db || !mainWindow) return false;
+
+  const { dateStr } = getISTDateInfo();
+  const { filePath } = await dialog.showSaveDialog({
+    title: "Save Complete Database Backup",
+    defaultPath: `emitra_backup_${dateStr}.db`,
+    filters: [{ name: "SQLite Database", extensions: ["db", "sqlite"] }],
+  });
+
+  if (!filePath) return false;
+
+  await db.backup(filePath);
+  return true;
+});
+
+ipcMain.handle("get-backups-info", () => {
+  try {
+    const backupDir = path.join(app.getPath("userData"), "backups");
+    if (!fs.existsSync(backupDir)) {
+      return { backupDir, backups: [] };
+    }
+
+    const files = fs
+      .readdirSync(backupDir)
+      .filter((f) => f.endsWith(".db"))
+      .map((f) => {
+        const fullPath = path.join(backupDir, f);
+        const stat = fs.statSync(fullPath);
+        return {
+          name: f,
+          path: fullPath,
+          size: stat.size,
+          createdAt: stat.mtime,
+        };
+      })
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    return { backupDir, backups: files };
+  } catch (err) {
+    return { backupDir: "", backups: [] };
+  }
 });
 
 /* =========================
@@ -1476,6 +1818,7 @@ ipcMain.handle("update-invoice", (_, id, data) => {
 app.whenReady().then(() => {
   initializeDatabase();
   migrateDatabase();
+  startAutoBackupScheduler();
   createWindow();
 });
 

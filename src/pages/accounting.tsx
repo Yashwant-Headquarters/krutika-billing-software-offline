@@ -4,6 +4,13 @@ import {
   Button,
   Card,
   CardContent,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+  IconButton,
   MenuItem,
   Paper,
   Stack,
@@ -14,9 +21,17 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import AddCircleIcon from "@mui/icons-material/AddCircle";
+import EditIcon from "@mui/icons-material/Edit";
+import DeleteIcon from "@mui/icons-material/Delete";
+import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
+import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
+import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
+import PaymentIcon from "@mui/icons-material/Payment";
+import HourglassEmptyIcon from "@mui/icons-material/HourglassEmpty";
 
 type Entry = {
   id: number;
@@ -25,6 +40,9 @@ type Entry = {
   description: string | null;
   entry_date: string | null;
   reference: string | null;
+  customer_id?: number | null;
+  customer_name?: string | null;
+  customer_phone?: string | null;
 };
 
 type Summary = {
@@ -46,13 +64,21 @@ export default function AccountingPage() {
     receivable: 0,
     balance: 0,
   });
+
   const [form, setForm] = useState({
     entry_type: "expense",
     amount: "",
     description: "",
-    entry_date: "",
+    entry_date: new Date().toISOString().slice(0, 10),
     customer_id: "",
   });
+
+  const [filterType, setFilterType] = useState<string>("all");
+  const [search, setSearch] = useState<string>("");
+
+  // Edit / Delete State
+  const [editEntry, setEditEntry] = useState<any | null>(null);
+  const [deleteEntryId, setDeleteEntryId] = useState<number | null>(null);
 
   const loadData = async () => {
     const [entryRes, summaryRes, customerRes] = await Promise.all([
@@ -73,189 +99,541 @@ export default function AccountingPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.amount) return;
+    if (!form.amount || Number(form.amount) <= 0) return;
+
     await window.electron.invoke("add-accounting-entry", {
       ...form,
       amount: Number(form.amount),
       entry_date: form.entry_date || new Date().toISOString().slice(0, 10),
     });
+
     setForm({
       entry_type: "expense",
       amount: "",
       description: "",
-      entry_date: "",
+      entry_date: new Date().toISOString().slice(0, 10),
       customer_id: "",
     });
+
     await loadData();
   };
 
+  const handleUpdateEntry = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editEntry || !editEntry.amount || Number(editEntry.amount) <= 0) return;
+
+    await window.electron.invoke("update-accounting-entry", editEntry.id, {
+      entry_type: editEntry.entry_type,
+      amount: Number(editEntry.amount),
+      description: editEntry.description,
+      entry_date: editEntry.entry_date,
+      customer_id: editEntry.customer_id ? Number(editEntry.customer_id) : null,
+      reference: editEntry.reference,
+    });
+
+    setEditEntry(null);
+    await loadData();
+  };
+
+  const handleDeleteEntry = async () => {
+    if (!deleteEntryId) return;
+    await window.electron.invoke("delete-accounting-entry", deleteEntryId);
+    setDeleteEntryId(null);
+    await loadData();
+  };
+
+  const filteredEntries = entries.filter((entry) => {
+    const matchesType =
+      filterType === "all" || entry.entry_type === filterType;
+    const searchLower = search.toLowerCase().trim();
+    const matchesSearch =
+      !searchLower ||
+      (entry.description || "").toLowerCase().includes(searchLower) ||
+      (entry.reference || "").toLowerCase().includes(searchLower) ||
+      (entry.customer_name || "").toLowerCase().includes(searchLower) ||
+      String(entry.amount || "").includes(searchLower);
+
+    return matchesType && matchesSearch;
+  });
+
   return (
     <Stack spacing={3} p={4}>
-      <Typography variant="h4" fontWeight="bold">
-        Accounting
-      </Typography>
-      <Typography color="text.secondary">
-        Track cash flow, expenses and customer dues from one place.
-      </Typography>
+      {/* Page Header */}
+      <Box>
+        <Typography variant="h4" fontWeight="bold">
+          Accounting & Cash Flow
+        </Typography>
+        <Typography color="text.secondary">
+          Track revenue, client payments, daily expenses and customer receivables.
+        </Typography>
+      </Box>
 
-      <Stack spacing={3}>
-        <Card>
-          <CardContent>
-            <Typography variant="h6" mb={2}>
-              Quick Entry
+      {/* 📊 SUMMARY CARDS */}
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        spacing={2}
+        flexWrap="wrap"
+      >
+        <Card sx={{ flex: 1, minWidth: 200, borderRadius: 2 }}>
+          <CardContent sx={{ py: 2.5 }}>
+            <Stack direction="row" spacing={1.5} alignItems="center">
+              <ArrowUpwardIcon color="success" />
+              <Typography color="text.secondary" variant="body2">
+                Total Revenue / Income
+              </Typography>
+            </Stack>
+            <Typography variant="h5" fontWeight="bold" mt={1}>
+              ₹{Number(summary.income || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
             </Typography>
-            <Box
-              component="form"
-              onSubmit={handleSubmit}
-              sx={{ display: "grid", gap: 2 }}
-            >
-              <TextField
-                select
-                label="Entry Type"
-                value={form.entry_type}
-                onChange={(e) =>
-                  setForm({ ...form, entry_type: e.target.value })
-                }
-              >
-                <MenuItem value="expense">Expense</MenuItem>
-                <MenuItem value="income">Income</MenuItem>
-                <MenuItem value="payment">Client payment</MenuItem>
-              </TextField>
-              {form.entry_type === "payment" && (
-                <TextField
-                  select
-                  label="Customer"
-                  value={form.customer_id}
-                  onChange={(e) =>
-                    setForm({ ...form, customer_id: e.target.value })
-                  }
-                  required
-                >
-                  {customers.map((customer) => (
-                    <MenuItem key={customer.id} value={customer.id}>
-                      {customer.name}
-                      {customer.phone ? ` - ${customer.phone}` : ""}
-                    </MenuItem>
-                  ))}
-                </TextField>
-              )}
-              <TextField
-                label="Amount"
-                type="number"
-                value={form.amount}
-                onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                required
-              />
-              <TextField
-                label="Description"
-                value={form.description}
-                onChange={(e) =>
-                  setForm({ ...form, description: e.target.value })
-                }
-              />
-              <TextField
-                label="Date"
-                type="date"
-                value={form.entry_date}
-                onChange={(e) =>
-                  setForm({ ...form, entry_date: e.target.value })
-                }
-                InputLabelProps={{ shrink: true }}
-              />
-              <Button
-                type="submit"
-                variant="contained"
-                startIcon={<AddCircleIcon />}
-              >
-                Save Entry
-              </Button>
-            </Box>
           </CardContent>
         </Card>
 
-        <Stack
-          direction={{ xs: "column", sm: "row" }}
-          spacing={2}
-          flexWrap="wrap"
+        <Card sx={{ flex: 1, minWidth: 200, borderRadius: 2 }}>
+          <CardContent sx={{ py: 2.5 }}>
+            <Stack direction="row" spacing={1.5} alignItems="center">
+              <PaymentIcon color="primary" />
+              <Typography color="text.secondary" variant="body2">
+                Client Payments Received
+              </Typography>
+            </Stack>
+            <Typography variant="h5" fontWeight="bold" color="primary.main" mt={1}>
+              ₹{Number(summary.payments || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+            </Typography>
+          </CardContent>
+        </Card>
+
+        <Card sx={{ flex: 1, minWidth: 200, borderRadius: 2 }}>
+          <CardContent sx={{ py: 2.5 }}>
+            <Stack direction="row" spacing={1.5} alignItems="center">
+              <ArrowDownwardIcon color="error" />
+              <Typography color="text.secondary" variant="body2">
+                Total Expenses
+              </Typography>
+            </Stack>
+            <Typography variant="h5" fontWeight="bold" color="error.main" mt={1}>
+              ₹{Number(summary.expense || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+            </Typography>
+          </CardContent>
+        </Card>
+
+        <Card sx={{ flex: 1, minWidth: 200, borderRadius: 2 }}>
+          <CardContent sx={{ py: 2.5 }}>
+            <Stack direction="row" spacing={1.5} alignItems="center">
+              <HourglassEmptyIcon color="warning" />
+              <Typography color="text.secondary" variant="body2">
+                Receivable Dues
+              </Typography>
+            </Stack>
+            <Typography variant="h5" fontWeight="bold" color="warning.main" mt={1}>
+              ₹{Number(summary.receivable || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+            </Typography>
+          </CardContent>
+        </Card>
+
+        <Card
+          sx={{
+            flex: 1,
+            minWidth: 200,
+            borderRadius: 2,
+            background: "linear-gradient(135deg, rgba(99,102,241,0.1), rgba(6,182,212,0.1))",
+            border: "1px solid rgba(99,102,241,0.2)",
+          }}
         >
-          <Card sx={{ flex: 1, minWidth: 240 }}>
-            <CardContent>
-              <Typography color="text.secondary">Income</Typography>
-              <Typography variant="h5">₹{summary.income.toFixed(2)}</Typography>
-            </CardContent>
-          </Card>
-          <Card sx={{ flex: 1, minWidth: 240 }}>
-            <CardContent>
-              <Typography color="text.secondary">Client payments</Typography>
-              <Typography variant="h5">
-                ₹{Number(summary.payments || 0).toFixed(2)}
+          <CardContent sx={{ py: 2.5 }}>
+            <Stack direction="row" spacing={1.5} alignItems="center">
+              <AccountBalanceWalletIcon color="primary" />
+              <Typography color="text.secondary" variant="body2">
+                Net Cash Balance
               </Typography>
-            </CardContent>
-          </Card>
-          <Card sx={{ flex: 1, minWidth: 240 }}>
-            <CardContent>
-              <Typography color="text.secondary">Expenses</Typography>
-              <Typography variant="h5">
-                ₹{summary.expense.toFixed(2)}
-              </Typography>
-            </CardContent>
-          </Card>
-          <Card sx={{ flex: 1, minWidth: 240 }}>
-            <CardContent>
-              <Typography color="text.secondary">Receivables</Typography>
-              <Typography variant="h5">
-                ₹{summary.receivable.toFixed(2)}
-              </Typography>
-            </CardContent>
-          </Card>
-          <Card sx={{ flex: 1, minWidth: 240 }}>
-            <CardContent>
-              <Typography color="text.secondary">Net Balance</Typography>
-              <Typography variant="h5">
-                ₹{summary.balance.toFixed(2)}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Stack>
+            </Stack>
+            <Typography
+              variant="h5"
+              fontWeight="bold"
+              color={summary.balance >= 0 ? "success.main" : "error.main"}
+              mt={1}
+            >
+              ₹{Number(summary.balance || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+            </Typography>
+          </CardContent>
+        </Card>
       </Stack>
 
-      <Card>
+      {/* ✍️ QUICK ENTRY FORM */}
+      <Card sx={{ borderRadius: 2 }}>
         <CardContent>
-          <Typography variant="h6" mb={2}>
-            Accounting Ledger
+          <Typography variant="h6" fontWeight="bold" mb={2}>
+            Quick New Entry
           </Typography>
-          <TableContainer component={Paper} variant="outlined">
+          <Box
+            component="form"
+            onSubmit={handleSubmit}
+            sx={{
+              display: "grid",
+              gridTemplateColumns: {
+                xs: "1fr",
+                sm: "1fr 1fr",
+                md: form.entry_type === "payment" ? "1fr 1.5fr 1fr 1.5fr 1fr auto" : "1fr 1fr 1.5fr 1fr auto",
+              },
+              gap: 2,
+              alignItems: "center",
+            }}
+          >
+            <TextField
+              select
+              size="small"
+              label="Entry Type"
+              value={form.entry_type}
+              onChange={(e) =>
+                setForm({ ...form, entry_type: e.target.value })
+              }
+            >
+              <MenuItem value="expense">Expense</MenuItem>
+              <MenuItem value="income">General Income</MenuItem>
+              <MenuItem value="payment">Client Payment (Khata)</MenuItem>
+            </TextField>
+
+            {form.entry_type === "payment" && (
+              <TextField
+                select
+                size="small"
+                label="Customer *"
+                value={form.customer_id}
+                onChange={(e) =>
+                  setForm({ ...form, customer_id: e.target.value })
+                }
+                required
+              >
+                {customers.map((customer) => (
+                  <MenuItem key={customer.id} value={customer.id}>
+                    {customer.name} {customer.phone ? `(${customer.phone})` : ""}
+                  </MenuItem>
+                ))}
+              </TextField>
+            )}
+
+            <TextField
+              size="small"
+              label="Amount (₹) *"
+              type="number"
+              value={form.amount}
+              onChange={(e) => setForm({ ...form, amount: e.target.value })}
+              required
+            />
+
+            <TextField
+              size="small"
+              label="Description / Purpose"
+              value={form.description}
+              onChange={(e) =>
+                setForm({ ...form, description: e.target.value })
+              }
+              placeholder="e.g. Shop electricity / Customer payment"
+            />
+
+            <TextField
+              size="small"
+              label="Date"
+              type="date"
+              value={form.entry_date}
+              onChange={(e) =>
+                setForm({ ...form, entry_date: e.target.value })
+              }
+              InputLabelProps={{ shrink: true }}
+            />
+
+            <Button
+              type="submit"
+              variant="contained"
+              color="primary"
+              startIcon={<AddCircleIcon />}
+              sx={{ height: 40, textTransform: "none", fontWeight: "bold" }}
+            >
+              Save Entry
+            </Button>
+          </Box>
+        </CardContent>
+      </Card>
+
+      {/* 📖 ACCOUNTING LEDGER TABLE */}
+      <Card sx={{ borderRadius: 2 }}>
+        <CardContent>
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            justifyContent="space-between"
+            alignItems={{ xs: "flex-start", sm: "center" }}
+            spacing={2}
+            mb={2.5}
+          >
+            <Typography variant="h6" fontWeight="bold">
+              Accounting Ledger ({filteredEntries.length})
+            </Typography>
+
+            {/* Filter and Search */}
+            <Stack direction="row" spacing={1.5}>
+              <TextField
+                select
+                size="small"
+                label="Filter Type"
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value)}
+                sx={{ minWidth: 150 }}
+              >
+                <MenuItem value="all">All Entries</MenuItem>
+                <MenuItem value="payment">Client Payments</MenuItem>
+                <MenuItem value="income">General Income</MenuItem>
+                <MenuItem value="expense">Expenses</MenuItem>
+              </TextField>
+
+              <TextField
+                size="small"
+                label="Search Ledger"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search note, customer..."
+              />
+            </Stack>
+          </Stack>
+
+          <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
             <Table size="small">
-              <TableHead>
+              <TableHead sx={{ backgroundColor: "#f8fafc" }}>
                 <TableRow>
-                  <TableCell>Date</TableCell>
-                  <TableCell>Type</TableCell>
-                  <TableCell>Amount</TableCell>
-                  <TableCell>Description</TableCell>
-                  <TableCell>Reference</TableCell>
+                  <TableCell><b>Date</b></TableCell>
+                  <TableCell><b>Type</b></TableCell>
+                  <TableCell><b>Client / Customer</b></TableCell>
+                  <TableCell><b>Amount (₹)</b></TableCell>
+                  <TableCell><b>Description</b></TableCell>
+                  <TableCell><b>Reference / Link</b></TableCell>
+                  <TableCell align="center"><b>Actions</b></TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {entries.map((entry) => (
-                  <TableRow key={entry.id}>
-                    <TableCell>{entry.entry_date || "-"}</TableCell>
-                    <TableCell>
-                      {entry.entry_type === "payment"
-                        ? "Client payment"
-                        : entry.entry_type}
+                {filteredEntries.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} align="center" sx={{ py: 3 }}>
+                      <Typography color="text.secondary">No accounting records found.</Typography>
                     </TableCell>
-                    <TableCell>
-                      ₹{Number(entry.amount || 0).toFixed(2)}
-                    </TableCell>
-                    <TableCell>{entry.description || "-"}</TableCell>
-                    <TableCell>{entry.reference || "-"}</TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  filteredEntries.map((entry) => (
+                    <TableRow key={entry.id} hover>
+                      <TableCell>{entry.entry_date || "-"}</TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          label={
+                            entry.entry_type === "payment"
+                              ? "Client Payment"
+                              : entry.entry_type === "income"
+                                ? "Income"
+                                : "Expense"
+                          }
+                          color={
+                            entry.entry_type === "payment" ||
+                            entry.entry_type === "income"
+                              ? "success"
+                              : "error"
+                          }
+                          variant="outlined"
+                          sx={{ fontWeight: "bold", fontSize: 11 }}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        {entry.customer_name ? (
+                          <Typography fontWeight="bold" fontSize={13}>
+                            {entry.customer_name}
+                          </Typography>
+                        ) : (
+                          <Typography color="text.secondary" fontSize={13}>
+                            -
+                          </Typography>
+                        )}
+                      </TableCell>
+                      <TableCell
+                        sx={{
+                          fontWeight: "bold",
+                          color:
+                            entry.entry_type === "expense"
+                              ? "error.main"
+                              : "success.main",
+                        }}
+                      >
+                        ₹{Number(entry.amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                      </TableCell>
+                      <TableCell>{entry.description || "-"}</TableCell>
+                      <TableCell>
+                        {entry.reference ? (
+                          <Chip
+                            label={entry.reference}
+                            size="small"
+                            variant="outlined"
+                            sx={{ fontSize: 11 }}
+                          />
+                        ) : (
+                          "-"
+                        )}
+                      </TableCell>
+                      <TableCell align="center">
+                        <Stack direction="row" spacing={0.5} justifyContent="center">
+                          <Tooltip title="Edit Entry">
+                            <IconButton
+                              size="small"
+                              color="info"
+                              onClick={() =>
+                                setEditEntry({
+                                  id: entry.id,
+                                  entry_type: entry.entry_type,
+                                  amount: String(entry.amount || ""),
+                                  description: entry.description || "",
+                                  entry_date:
+                                    entry.entry_date ||
+                                    new Date().toISOString().slice(0, 10),
+                                  customer_id: entry.customer_id || "",
+                                  reference: entry.reference || "",
+                                })
+                              }
+                            >
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+
+                          <Tooltip title="Delete Entry">
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => setDeleteEntryId(entry.id)}
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </Stack>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </TableContainer>
         </CardContent>
       </Card>
+
+      {/* 📌 EDIT ENTRY DIALOG */}
+      <Dialog
+        open={!!editEntry}
+        onClose={() => setEditEntry(null)}
+        maxWidth="xs"
+        fullWidth
+      >
+        {editEntry && (
+          <Box component="form" onSubmit={handleUpdateEntry}>
+            <DialogTitle fontWeight="bold">Edit Accounting Entry</DialogTitle>
+            <DialogContent>
+              <Stack spacing={2} mt={1}>
+                <TextField
+                  select
+                  label="Type"
+                  value={editEntry.entry_type}
+                  onChange={(e) =>
+                    setEditEntry({ ...editEntry, entry_type: e.target.value })
+                  }
+                  fullWidth
+                >
+                  <MenuItem value="expense">Expense</MenuItem>
+                  <MenuItem value="income">General Income</MenuItem>
+                  <MenuItem value="payment">Client Payment</MenuItem>
+                </TextField>
+
+                {editEntry.entry_type === "payment" && (
+                  <TextField
+                    select
+                    label="Customer"
+                    value={editEntry.customer_id}
+                    onChange={(e) =>
+                      setEditEntry({ ...editEntry, customer_id: e.target.value })
+                    }
+                    fullWidth
+                  >
+                    {customers.map((c) => (
+                      <MenuItem key={c.id} value={c.id}>
+                        {c.name} {c.phone ? `(${c.phone})` : ""}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                )}
+
+                <TextField
+                  label="Amount (₹) *"
+                  type="number"
+                  value={editEntry.amount}
+                  onChange={(e) =>
+                    setEditEntry({ ...editEntry, amount: e.target.value })
+                  }
+                  fullWidth
+                  required
+                />
+
+                <TextField
+                  label="Date"
+                  type="date"
+                  value={editEntry.entry_date}
+                  onChange={(e) =>
+                    setEditEntry({ ...editEntry, entry_date: e.target.value })
+                  }
+                  fullWidth
+                  InputLabelProps={{ shrink: true }}
+                />
+
+                <TextField
+                  label="Description"
+                  value={editEntry.description}
+                  onChange={(e) =>
+                    setEditEntry({ ...editEntry, description: e.target.value })
+                  }
+                  fullWidth
+                />
+
+                <TextField
+                  label="Reference / Note"
+                  value={editEntry.reference}
+                  onChange={(e) =>
+                    setEditEntry({ ...editEntry, reference: e.target.value })
+                  }
+                  fullWidth
+                />
+              </Stack>
+            </DialogContent>
+            <DialogActions sx={{ p: 2 }}>
+              <Button onClick={() => setEditEntry(null)}>Cancel</Button>
+              <Button type="submit" variant="contained">
+                Update
+              </Button>
+            </DialogActions>
+          </Box>
+        )}
+      </Dialog>
+
+      {/* 📌 DELETE ENTRY CONFIRMATION DIALOG */}
+      <Dialog
+        open={!!deleteEntryId}
+        onClose={() => setDeleteEntryId(null)}
+      >
+        <DialogTitle fontWeight="bold">Delete Accounting Entry?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to delete this accounting record? If this was a client payment, any pending invoice dues will be restored.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setDeleteEntryId(null)}>Cancel</Button>
+          <Button
+            onClick={handleDeleteEntry}
+            variant="contained"
+            color="error"
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Stack>
   );
 }

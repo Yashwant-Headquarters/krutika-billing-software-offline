@@ -3,37 +3,71 @@ import {
   Stack,
   Typography,
   Card,
+  CardContent,
   Divider,
   Chip,
   Button,
   Avatar,
   Box,
   TextField,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  IconButton,
+  Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
 } from "@mui/material";
-import { useParams } from "react-router-dom";
-import InvoiceCard from "../component/card";
+import { useParams, useNavigate } from "react-router-dom";
+import VisibilityIcon from "@mui/icons-material/Visibility";
+import EditIcon from "@mui/icons-material/Edit";
+import DeleteIcon from "@mui/icons-material/Delete";
+import AddCircleIcon from "@mui/icons-material/AddCircle";
+import PaymentIcon from "@mui/icons-material/Payment";
+import ReceiptIcon from "@mui/icons-material/Receipt";
+import { PATH_DASHBOARD } from "../routes/paths";
 
 export default function CustomerDetail() {
   const { id } = useParams();
-  const [page, setPage] = useState(1);
-  const [data, setData] = useState<any>(null);
+  const navigate = useNavigate();
 
+  const [data, setData] = useState<any>(null);
   const [invoices, setInvoices] = useState<any[]>([]);
+  const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalResults, setTotalResults] = useState(0);
-
   const [search, setSearch] = useState("");
   const [dateFilter, setDateFilter] = useState("");
-  const limit = 20;
+  const limit = 15;
+
+  // Dialog States
+  const [openAddPayment, setOpenAddPayment] = useState(false);
+  const [paymentForm, setPaymentForm] = useState({
+    amount: "",
+    description: "",
+    entry_date: new Date().toISOString().slice(0, 10),
+  });
+
+  const [editPayment, setEditPayment] = useState<any | null>(null);
+  const [deletePaymentId, setDeletePaymentId] = useState<number | null>(null);
+  const [deleteInvoiceId, setDeleteInvoiceId] = useState<number | null>(null);
+
   useEffect(() => {
-    load();
-  }, []);
+    loadCustomerData();
+  }, [id]);
 
   useEffect(() => {
     loadInvoices();
-  }, [page, search, dateFilter]);
+  }, [id, page, search, dateFilter]);
 
-  const load = async () => {
+  const loadCustomerData = async () => {
     const res = await window.electron.invoke(
       "get-customer-full-details",
       Number(id),
@@ -48,188 +82,718 @@ export default function CustomerDetail() {
       limit,
       search,
       dateFilter,
-      Number(id), // 🔥 THIS IS KEY
+      Number(id),
     );
-
-    setInvoices(res.data);
-    setTotalPages(res.totalPages);
-    setTotalResults(res.total);
+    setInvoices(res?.data || []);
+    setTotalPages(res?.totalPages || 1);
+    setTotalResults(res?.total || 0);
   };
 
-  if (!data) return <Typography>Loading...</Typography>;
+  const handleCreatePayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!paymentForm.amount || Number(paymentForm.amount) <= 0) return;
+
+    await window.electron.invoke("add-accounting-entry", {
+      entry_type: "payment",
+      amount: Number(paymentForm.amount),
+      description: paymentForm.description || "Client payment received",
+      entry_date:
+        paymentForm.entry_date || new Date().toISOString().slice(0, 10),
+      customer_id: Number(id),
+    });
+
+    setPaymentForm({
+      amount: "",
+      description: "",
+      entry_date: new Date().toISOString().slice(0, 10),
+    });
+    setOpenAddPayment(false);
+
+    await Promise.all([loadCustomerData(), loadInvoices()]);
+  };
+
+  const handleUpdatePayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editPayment || !editPayment.amount || Number(editPayment.amount) <= 0)
+      return;
+
+    await window.electron.invoke("update-accounting-entry", editPayment.id, {
+      entry_type: "payment",
+      amount: Number(editPayment.amount),
+      description: editPayment.description,
+      entry_date: editPayment.entry_date,
+      customer_id: Number(id),
+      reference: editPayment.reference,
+    });
+
+    setEditPayment(null);
+    await Promise.all([loadCustomerData(), loadInvoices()]);
+  };
+
+  const handleDeletePayment = async () => {
+    if (!deletePaymentId) return;
+    await window.electron.invoke(
+      "delete-accounting-entry",
+      Number(deletePaymentId),
+    );
+    setDeletePaymentId(null);
+    await Promise.all([loadCustomerData(), loadInvoices()]);
+  };
+
+  const handleDeleteInvoice = async () => {
+    if (!deleteInvoiceId) return;
+    await window.electron.invoke("delete-invoice", Number(deleteInvoiceId));
+    setDeleteInvoiceId(null);
+    await Promise.all([loadCustomerData(), loadInvoices()]);
+  };
+
+  if (!data || !data.customer) {
+    return (
+      <Box p={4} textAlign="center">
+        <Typography>Loading customer profile...</Typography>
+      </Box>
+    );
+  }
+
+  const { customer, summary, payments = [], topItems = [] } = data;
 
   return (
     <Stack spacing={3} p={3}>
-      <Stack spacing={3} p={3}>
-        {/* 🔥 TITLE */}
-        <Typography
-          variant="h4"
-          textAlign="center"
-          fontWeight="bold"
-          sx={{
-            background: "linear-gradient(90deg, #6366f1, #06b6d4)",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-          }}
+      {/* 🧑 CUSTOMER HEADER */}
+      <Card
+        sx={{
+          p: 3,
+          borderRadius: 3,
+          background:
+            "linear-gradient(135deg, rgba(99,102,241,0.08), rgba(6,182,212,0.08))",
+          boxShadow: "0 4px 20px rgba(0,0,0,0.06)",
+          border: "1px solid rgba(99,102,241,0.2)",
+        }}
+      >
+        <Stack
+          direction={{ xs: "column", sm: "row" }}
+          spacing={3}
+          alignItems={{ xs: "flex-start", sm: "center" }}
+          justifyContent="space-between"
         >
-          Customer Profile
-        </Typography>
-
-        {/* 🧑 CUSTOMER HEADER */}
-        <Card
-          sx={{
-            p: 3,
-            borderRadius: 4,
-            background:
-              "linear-gradient(135deg, rgba(99,102,241,0.1), rgba(6,182,212,0.1))",
-            backdropFilter: "blur(10px)",
-            border: "1px solid rgba(255,255,255,0.1)",
-            boxShadow: "0 10px 30px rgba(0,0,0,0.1)",
-          }}
-        >
-          <Stack direction="row" spacing={3} alignItems="center">
-            {/* 👤 Avatar */}
+          <Stack direction="row" spacing={2.5} alignItems="center">
             <Avatar
               sx={{
-                width: 70,
-                height: 70,
-                fontSize: 28,
+                width: 68,
+                height: 68,
+                fontSize: 26,
                 fontWeight: "bold",
                 background: "linear-gradient(135deg, #6366f1, #06b6d4)",
               }}
             >
-              {data.customer.name?.charAt(0)}
+              {customer.name?.charAt(0)?.toUpperCase()}
             </Avatar>
 
-            {/* 🧾 Info */}
             <Box>
               <Typography variant="h5" fontWeight="bold">
-                {data.customer.name}
+                {customer.name}
               </Typography>
 
-              <Typography color="text.secondary">
-                📞 {data.customer.phone}
+              <Typography color="text.secondary" fontSize={14}>
+                📞 {customer.phone || "No phone provided"}
               </Typography>
 
-              <Typography color="text.secondary">
-                📍 {data.customer.address}
-              </Typography>
+              {customer.address && (
+                <Typography color="text.secondary" fontSize={14}>
+                  📍 {customer.address}
+                </Typography>
+              )}
 
-              {/* 💡 Status Badge */}
-              <Stack direction="row" spacing={1} mt={1}>
-                <Chip label="Active Customer" color="success" size="small" />
-                {data.summary.pending > 0 && (
+              {customer.gstin && (
+                <Typography color="text.secondary" fontSize={14}>
+                  🏢 GSTIN: <b>{customer.gstin}</b>
+                </Typography>
+              )}
+
+              <Stack direction="row" spacing={1} mt={1} flexWrap="wrap" gap={0.5}>
+                <Chip label="Active Client" color="success" size="small" />
+                {summary.pending > 0 ? (
                   <Chip
-                    label={`Pending ₹${data.summary.pending}`}
-                    color="warning"
+                    label={`Pending Dues: ₹${Number(summary.pending).toFixed(2)}`}
+                    color="error"
                     size="small"
+                    sx={{ fontWeight: "bold" }}
+                  />
+                ) : (
+                  <Chip
+                    label="No Pending Dues"
+                    color="primary"
+                    variant="outlined"
+                    size="small"
+                  />
+                )}
+                {summary.advance > 0 && (
+                  <Chip
+                    label={`Advance Balance: ₹${Number(summary.advance).toFixed(2)}`}
+                    color="success"
+                    size="small"
+                    sx={{ fontWeight: "bold" }}
                   />
                 )}
               </Stack>
             </Box>
           </Stack>
-        </Card>
-      </Stack>
-      {/* 📊 STATS */}
-      <Stack direction="row" spacing={2} flexWrap="wrap">
-        <Card sx={{ p: 2, minWidth: 200 }}>
-          <Typography>Total Spend</Typography>
-          <Typography variant="h5">₹{data.summary.totalSpend || 0}</Typography>
-        </Card>
-
-        <Card sx={{ p: 2, minWidth: 200 }}>
-          <Typography>Pending</Typography>
-          <Typography variant="h5" color="error">
-            ₹{data.summary.pending || 0}
-          </Typography>
-        </Card>
-
-        <Card sx={{ p: 2, minWidth: 200 }}>
-          <Typography>Total Invoices</Typography>
-          <Typography variant="h5">{data.invoices.length}</Typography>
-        </Card>
-      </Stack>
-      {/* 🛒 TOP ITEMS */}
-      <Card sx={{ p: 3 }}>
-        <Typography variant="h6">Most Bought Items</Typography>
-        <Divider sx={{ my: 1 }} />
-
-        <Stack direction="row" spacing={1} flexWrap="wrap">
-          {data.topItems.map((item: any) => (
-            <Chip
-              key={item.item_name}
-              label={`${item.item_name} (${item.qty})`}
-              color="primary"
-            />
-          ))}
-        </Stack>
-      </Card>
-      {/* 🧾 INVOICES */}
-      <Card sx={{ p: 3 }}>
-        <Typography variant="h6">All Invoices</Typography>
-
-        {/* 🔍 FILTERS */}
-        <Stack direction="row" spacing={2} mt={2}>
-          <TextField
-            label="Search"
-            value={search}
-            onChange={(e) => {
-              setPage(1);
-              setSearch(e.target.value);
-            }}
-          />
-
-          <TextField
-            type="date"
-            label="Filter by Date"
-            InputLabelProps={{ shrink: true }}
-            value={dateFilter}
-            onChange={(e) => {
-              setPage(1);
-              setDateFilter(e.target.value);
-            }}
-          />
-        </Stack>
-
-        <Divider sx={{ my: 2 }} />
-
-        {/* 📦 INVOICE CARDS */}
-        <Stack direction="row" flexWrap="wrap" gap={3}>
-          {invoices.map((inv) => (
-            <InvoiceCard key={inv.id} invoice={inv} />
-          ))}
-        </Stack>
-
-        {/* 📊 INFO */}
-        <Stack spacing={1} mt={2}>
-          <Typography>
-            Showing {invoices.length} of {totalResults}
-          </Typography>
-
-          <Typography>
-            Page {page} of {totalPages}
-          </Typography>
-        </Stack>
-
-        {/* ⬅️ ➡️ PAGINATION */}
-        <Stack direction="row" spacing={2} mt={2}>
-          <Button
-            variant="outlined"
-            disabled={page === 1}
-            onClick={() => setPage((p) => p - 1)}
-          >
-            Previous
-          </Button>
 
           <Button
             variant="contained"
-            disabled={page >= totalPages}
-            onClick={() => setPage((p) => p + 1)}
+            color="primary"
+            size="large"
+            startIcon={<PaymentIcon />}
+            onClick={() => setOpenAddPayment(true)}
+            sx={{ fontWeight: "bold", textTransform: "none", borderRadius: 2 }}
           >
-            Next
+            + Record Payment
           </Button>
         </Stack>
       </Card>
+
+      {/* 📊 SUMMARY STATS */}
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={2} flexWrap="wrap">
+        <Card sx={{ flex: 1, minWidth: 160, borderRadius: 2 }}>
+          <CardContent sx={{ py: 2 }}>
+            <Typography variant="body2" color="text.secondary">
+              Total Spend
+            </Typography>
+            <Typography variant="h5" fontWeight="bold">
+              ₹{Number(summary.totalSpend || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+            </Typography>
+          </CardContent>
+        </Card>
+
+        <Card sx={{ flex: 1, minWidth: 160, borderRadius: 2 }}>
+          <CardContent sx={{ py: 2 }}>
+            <Typography variant="body2" color="text.secondary">
+              Pending Dues
+            </Typography>
+            <Typography
+              variant="h5"
+              fontWeight="bold"
+              color={summary.pending > 0 ? "error.main" : "text.primary"}
+            >
+              ₹{Number(summary.pending || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+            </Typography>
+          </CardContent>
+        </Card>
+
+        <Card sx={{ flex: 1, minWidth: 160, borderRadius: 2 }}>
+          <CardContent sx={{ py: 2 }}>
+            <Typography variant="body2" color="text.secondary">
+              Advance Balance
+            </Typography>
+            <Typography
+              variant="h5"
+              fontWeight="bold"
+              color={summary.advance > 0 ? "success.main" : "text.primary"}
+            >
+              ₹{Number(summary.advance || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+            </Typography>
+          </CardContent>
+        </Card>
+
+        <Card sx={{ flex: 1, minWidth: 160, borderRadius: 2 }}>
+          <CardContent sx={{ py: 2 }}>
+            <Typography variant="body2" color="text.secondary">
+              Total Invoices
+            </Typography>
+            <Typography variant="h5" fontWeight="bold">
+              {data.invoices?.length || 0}
+            </Typography>
+          </CardContent>
+        </Card>
+
+        <Card sx={{ flex: 1, minWidth: 160, borderRadius: 2 }}>
+          <CardContent sx={{ py: 2 }}>
+            <Typography variant="body2" color="text.secondary">
+              Payment Records
+            </Typography>
+            <Typography variant="h5" fontWeight="bold">
+              {payments.length}
+            </Typography>
+          </CardContent>
+        </Card>
+      </Stack>
+
+      {/* 🛒 MOST BOUGHT ITEMS */}
+      {topItems.length > 0 && (
+        <Card sx={{ p: 2.5, borderRadius: 2 }}>
+          <Typography variant="subtitle1" fontWeight="bold">
+            Most Bought Items
+          </Typography>
+          <Divider sx={{ my: 1.5 }} />
+          <Stack direction="row" spacing={1} flexWrap="wrap" gap={1}>
+            {topItems.map((item: any) => (
+              <Chip
+                key={item.item_name}
+                label={`${item.item_name} (${item.qty} qty)`}
+                color="info"
+                variant="outlined"
+              />
+            ))}
+          </Stack>
+        </Card>
+      )}
+
+      {/* 🧾 INVOICES TABLE LIST */}
+      <Card sx={{ p: 3, borderRadius: 2 }}>
+        <Stack
+          direction={{ xs: "column", sm: "row" }}
+          justifyContent="space-between"
+          alignItems={{ xs: "flex-start", sm: "center" }}
+          spacing={2}
+          mb={2}
+        >
+          <Stack direction="row" spacing={1} alignItems="center">
+            <ReceiptIcon color="primary" />
+            <Typography variant="h6" fontWeight="bold">
+              Invoices List
+            </Typography>
+          </Stack>
+
+          {/* Search & Filters */}
+          <Stack direction="row" spacing={1.5}>
+            <TextField
+              size="small"
+              label="Search Invoice #"
+              value={search}
+              onChange={(e) => {
+                setPage(1);
+                setSearch(e.target.value);
+              }}
+            />
+            <TextField
+              size="small"
+              type="date"
+              label="Date"
+              InputLabelProps={{ shrink: true }}
+              value={dateFilter}
+              onChange={(e) => {
+                setPage(1);
+                setDateFilter(e.target.value);
+              }}
+            />
+          </Stack>
+        </Stack>
+
+        <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
+          <Table size="small">
+            <TableHead sx={{ backgroundColor: "#f8fafc" }}>
+              <TableRow>
+                <TableCell><b># Invoice</b></TableCell>
+                <TableCell><b>Date</b></TableCell>
+                <TableCell><b>Total Amount</b></TableCell>
+                <TableCell><b>Pending</b></TableCell>
+                <TableCell><b>Status</b></TableCell>
+                <TableCell align="center"><b>Actions</b></TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {invoices.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} align="center" sx={{ py: 3 }}>
+                    <Typography color="text.secondary">No invoices found for this customer.</Typography>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                invoices.map((inv) => (
+                  <TableRow key={inv.id} hover>
+                    <TableCell sx={{ fontWeight: "bold" }}>
+                      #{inv.invoice_number}
+                    </TableCell>
+                    <TableCell>{inv.date}</TableCell>
+                    <TableCell>
+                      ₹{Number(inv.total || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                    </TableCell>
+                    <TableCell>
+                      {Number(inv.pending_amount || 0) > 0 ? (
+                        <Typography color="error" fontWeight="bold" fontSize={13}>
+                          ₹{Number(inv.pending_amount).toFixed(2)}
+                        </Typography>
+                      ) : (
+                        <Typography color="text.secondary" fontSize={13}>₹0.00</Typography>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        size="small"
+                        label={inv.status}
+                        color={
+                          inv.status === "PAID"
+                            ? "success"
+                            : inv.status === "UNPAID"
+                              ? "error"
+                              : "default"
+                        }
+                        sx={{ fontWeight: "bold", fontSize: 11 }}
+                      />
+                    </TableCell>
+                    <TableCell align="center">
+                      <Stack direction="row" spacing={1} justifyContent="center">
+                        <Tooltip title="View Invoice">
+                          <IconButton
+                            size="small"
+                            color="primary"
+                            onClick={() =>
+                              navigate(
+                                PATH_DASHBOARD.preview
+                                  .replace(":invoiceId", String(inv.id))
+                                  .replace(":isPrint", "false"),
+                              )
+                            }
+                          >
+                            <VisibilityIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+
+                        <Tooltip title="Edit Invoice">
+                          <IconButton
+                            size="small"
+                            color="info"
+                            onClick={() =>
+                              navigate(
+                                PATH_DASHBOARD.newInvoice + `?edit=${inv.id}`,
+                              )
+                            }
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+
+                        <Tooltip title="Delete Invoice">
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => setDeleteInvoiceId(inv.id)}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </Stack>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+
+        {/* Pagination */}
+        <Stack
+          direction="row"
+          justifyContent="space-between"
+          alignItems="center"
+          mt={2}
+        >
+          <Typography fontSize={13} color="text.secondary">
+            Showing {invoices.length} of {totalResults} invoices
+          </Typography>
+
+          <Stack direction="row" spacing={1}>
+            <Button
+              size="small"
+              variant="outlined"
+              disabled={page === 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              Previous
+            </Button>
+            <Typography alignSelf="center" fontSize={13}>
+              Page {page} of {totalPages || 1}
+            </Typography>
+            <Button
+              size="small"
+              variant="contained"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Next
+            </Button>
+          </Stack>
+        </Stack>
+      </Card>
+
+      {/* 💰 CLIENT PAYMENTS HISTORY */}
+      <Card sx={{ p: 3, borderRadius: 2 }}>
+        <Stack
+          direction="row"
+          justifyContent="space-between"
+          alignItems="center"
+          mb={2}
+        >
+          <Stack direction="row" spacing={1} alignItems="center">
+            <PaymentIcon color="success" />
+            <Typography variant="h6" fontWeight="bold">
+              Client Payment Records
+            </Typography>
+          </Stack>
+
+          <Button
+            size="small"
+            variant="outlined"
+            color="success"
+            startIcon={<AddCircleIcon />}
+            onClick={() => setOpenAddPayment(true)}
+            sx={{ fontWeight: "bold", textTransform: "none" }}
+          >
+            + Add Payment
+          </Button>
+        </Stack>
+
+        <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
+          <Table size="small">
+            <TableHead sx={{ backgroundColor: "#f8fafc" }}>
+              <TableRow>
+                <TableCell><b>Date</b></TableCell>
+                <TableCell><b>Amount Paid</b></TableCell>
+                <TableCell><b>Applied For / Ref</b></TableCell>
+                <TableCell><b>Description</b></TableCell>
+                <TableCell align="center"><b>Actions</b></TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {payments.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} align="center" sx={{ py: 3 }}>
+                    <Typography color="text.secondary">
+                      No payment records found for this client.
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                payments.map((pm: any) => (
+                  <TableRow key={pm.id} hover>
+                    <TableCell>{pm.entry_date || "-"}</TableCell>
+                    <TableCell sx={{ color: "success.main", fontWeight: "bold" }}>
+                      ₹{Number(pm.amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                    </TableCell>
+                    <TableCell>
+                      {pm.invoice_number ? (
+                        <Chip
+                          label={`Invoice #${pm.invoice_number}`}
+                          size="small"
+                          color="primary"
+                          variant="outlined"
+                          sx={{ fontSize: 11 }}
+                        />
+                      ) : (
+                        <Chip
+                          label={pm.reference || "Advance Payment"}
+                          size="small"
+                          color="success"
+                          variant="outlined"
+                          sx={{ fontSize: 11 }}
+                        />
+                      )}
+                    </TableCell>
+                    <TableCell>{pm.description || "-"}</TableCell>
+                    <TableCell align="center">
+                      <Stack direction="row" spacing={1} justifyContent="center">
+                        <Tooltip title="Edit Payment">
+                          <IconButton
+                            size="small"
+                            color="info"
+                            onClick={() =>
+                              setEditPayment({
+                                id: pm.id,
+                                amount: String(pm.amount || ""),
+                                description: pm.description || "",
+                                entry_date:
+                                  pm.entry_date ||
+                                  new Date().toISOString().slice(0, 10),
+                                reference: pm.reference || "",
+                              })
+                            }
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+
+                        <Tooltip title="Delete Payment">
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => setDeletePaymentId(pm.id)}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </Stack>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Card>
+
+      {/* 📌 DIALOG: RECORD NEW PAYMENT */}
+      <Dialog
+        open={openAddPayment}
+        onClose={() => setOpenAddPayment(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <Box component="form" onSubmit={handleCreatePayment}>
+          <DialogTitle fontWeight="bold">
+            Record Client Payment
+          </DialogTitle>
+          <DialogContent>
+            <DialogContentText sx={{ mb: 2 }}>
+              Enter payment received from <b>{customer.name}</b>. It will clear pending dues or record as advance if extra.
+            </DialogContentText>
+            <Stack spacing={2} mt={1}>
+              <TextField
+                label="Amount (₹) *"
+                type="number"
+                fullWidth
+                value={paymentForm.amount}
+                onChange={(e) =>
+                  setPaymentForm({ ...paymentForm, amount: e.target.value })
+                }
+                required
+                autoFocus
+              />
+              <TextField
+                label="Date"
+                type="date"
+                fullWidth
+                value={paymentForm.entry_date}
+                onChange={(e) =>
+                  setPaymentForm({ ...paymentForm, entry_date: e.target.value })
+                }
+                InputLabelProps={{ shrink: true }}
+              />
+              <TextField
+                label="Description / Note"
+                fullWidth
+                value={paymentForm.description}
+                onChange={(e) =>
+                  setPaymentForm({
+                    ...paymentForm,
+                    description: e.target.value,
+                  })
+                }
+                placeholder="e.g. Cash payment / GPay / Part payment"
+              />
+            </Stack>
+          </DialogContent>
+          <DialogActions sx={{ p: 2 }}>
+            <Button onClick={() => setOpenAddPayment(false)}>Cancel</Button>
+            <Button type="submit" variant="contained" color="success">
+              Save Payment
+            </Button>
+          </DialogActions>
+        </Box>
+      </Dialog>
+
+      {/* 📌 DIALOG: EDIT PAYMENT */}
+      <Dialog
+        open={!!editPayment}
+        onClose={() => setEditPayment(null)}
+        maxWidth="xs"
+        fullWidth
+      >
+        {editPayment && (
+          <Box component="form" onSubmit={handleUpdatePayment}>
+            <DialogTitle fontWeight="bold">Edit Payment Entry</DialogTitle>
+            <DialogContent>
+              <Stack spacing={2} mt={1}>
+                <TextField
+                  label="Amount (₹) *"
+                  type="number"
+                  fullWidth
+                  value={editPayment.amount}
+                  onChange={(e) =>
+                    setEditPayment({ ...editPayment, amount: e.target.value })
+                  }
+                  required
+                />
+                <TextField
+                  label="Date"
+                  type="date"
+                  fullWidth
+                  value={editPayment.entry_date}
+                  onChange={(e) =>
+                    setEditPayment({
+                      ...editPayment,
+                      entry_date: e.target.value,
+                    })
+                  }
+                  InputLabelProps={{ shrink: true }}
+                />
+                <TextField
+                  label="Description"
+                  fullWidth
+                  value={editPayment.description}
+                  onChange={(e) =>
+                    setEditPayment({
+                      ...editPayment,
+                      description: e.target.value,
+                    })
+                  }
+                />
+              </Stack>
+            </DialogContent>
+            <DialogActions sx={{ p: 2 }}>
+              <Button onClick={() => setEditPayment(null)}>Cancel</Button>
+              <Button type="submit" variant="contained">
+                Update
+              </Button>
+            </DialogActions>
+          </Box>
+        )}
+      </Dialog>
+
+      {/* 📌 DIALOG: DELETE PAYMENT CONFIRMATION */}
+      <Dialog
+        open={!!deletePaymentId}
+        onClose={() => setDeletePaymentId(null)}
+      >
+        <DialogTitle fontWeight="bold">Delete Payment Record?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to delete this payment record? If this payment was applied to an invoice, the pending dues will be restored.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setDeletePaymentId(null)}>Cancel</Button>
+          <Button
+            onClick={handleDeletePayment}
+            variant="contained"
+            color="error"
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 📌 DIALOG: DELETE INVOICE CONFIRMATION */}
+      <Dialog
+        open={!!deleteInvoiceId}
+        onClose={() => setDeleteInvoiceId(null)}
+      >
+        <DialogTitle fontWeight="bold">Delete Invoice?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to delete this invoice? This will remove the invoice and restore any product inventory.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setDeleteInvoiceId(null)}>Cancel</Button>
+          <Button
+            onClick={handleDeleteInvoice}
+            variant="contained"
+            color="error"
+          >
+            Delete Invoice
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Stack>
   );
 }

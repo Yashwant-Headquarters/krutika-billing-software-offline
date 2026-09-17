@@ -38,8 +38,8 @@ export default function InvoicePreview() {
       "get-invoice-details",
       Number(invoiceId),
     );
-    setInvoice(res.invoice);
-    setItems(res.items);
+    setInvoice(res?.invoice || null);
+    setItems(res?.items || []);
 
     if (isPrint === "true") {
       setTimeout(handlePrint, 500);
@@ -360,12 +360,12 @@ export default function InvoicePreview() {
               </TableHead>
               <TableBody>
                 {items.map((item, index) => (
-                  <TableRow key={item.id}>
+                  <TableRow key={item.id || index}>
                     <TableCell>{index + 1}</TableCell>
                     <TableCell>{item.item_name}</TableCell>
                     <TableCell>{item.quantity}</TableCell>
                     <TableCell>₹{item.price}</TableCell>
-                    <TableCell>₹{item.total}</TableCell>
+                    <TableCell>₹{item.total ?? (Number(item.quantity || 0) * Number(item.price || 0))}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

@@ -416,15 +416,22 @@ export default function NewInvoice() {
                 ? option
                 : `${option.name} - ${option.phone} - ${option.address}`
             }
-            onInputChange={(_, value) => {
-              setCustomerName(value);
-              handleCustomerSearch(value);
+            onInputChange={(_, value, reason) => {
+              if (reason === "input") {
+                setCustomerName(value);
+                handleCustomerSearch(value);
+              }
             }}
             onChange={(_, value: any) => {
-              if (value && typeof value !== "string") {
-                setCustomerName(value.name);
-                setCustomerPhone(value.phone);
-                setCustomerAddress(value.address);
+              if (typeof value === "string") {
+                setCustomerName(value);
+              } else if (value && typeof value !== "string") {
+                setCustomerName(value.name || "");
+                setCustomerPhone(value.phone || "");
+                setCustomerAddress(value.address || "");
+                if (value.gstin) {
+                  setCustomerGST(value.gstin);
+                }
               }
             }}
             renderInput={(params) => (
@@ -521,15 +528,21 @@ export default function NewInvoice() {
                     ? option
                     : `${option.name} - ₹${option.price}`
                 }
-                onInputChange={(_, value) => {
-                  handleItemChange(index, "item_name", value);
-                  handleItemSearch(value);
+                onInputChange={(_, value, reason) => {
+                  if (reason === "input") {
+                    handleItemChange(index, "item_name", value);
+                    handleItemSearch(value);
+                  }
                 }}
                 onChange={(_, value: any) => {
-                  if (value && typeof value !== "string") {
+                  if (typeof value === "string") {
+                    handleItemChange(index, "item_name", value);
+                  } else if (value && typeof value !== "string") {
                     const updated = [...items];
-                    updated[index].item_name = value.name;
-                    updated[index].price = value.price;
+                    updated[index].item_name = value.name || "";
+                    if (value.price !== undefined) {
+                      updated[index].price = Number(value.price) || 0;
+                    }
                     setItems(updated);
                   }
                 }}
