@@ -1276,7 +1276,7 @@ ipcMain.handle("save-invoice-pdf", async (_, invoiceNumber: string) => {
 
   const pdfData = await mainWindow.webContents.printToPDF({
     printBackground: true,
-    pageSize: { width: 210000, height: 148000 },
+    pageSize: { width: 210000, height: 297000 },
   });
 
   fs.writeFileSync(filePath, pdfData);

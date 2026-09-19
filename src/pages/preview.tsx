@@ -174,7 +174,7 @@ export default function InvoicePreview() {
           sx={{
             p: 2,
             width: "210mm",
-            minHeight: "140mm",
+            minHeight: "297mm",
             margin: "auto",
             position: "relative",
             boxShadow: "0 10px 30px rgba(15, 23, 42, 0.12)",
@@ -365,7 +365,11 @@ export default function InvoicePreview() {
                     <TableCell>{item.item_name}</TableCell>
                     <TableCell>{item.quantity}</TableCell>
                     <TableCell>₹{item.price}</TableCell>
-                    <TableCell>₹{item.total ?? (Number(item.quantity || 0) * Number(item.price || 0))}</TableCell>
+                    <TableCell>
+                      ₹
+                      {item.total ??
+                        Number(item.quantity || 0) * Number(item.price || 0)}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
